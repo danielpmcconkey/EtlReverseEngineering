@@ -31,7 +31,7 @@
 ### Completion
 
 - [x] **COMP-01**: Tier 1 complete — 3 trivial jobs (pipeline validation)
-- [ ] **COMP-02**: Tier 2 complete — 10 simple multi-source jobs
+- [x] **COMP-02**: Tier 2 complete — 10 simple multi-source jobs
 - [ ] **COMP-03**: Tier 3 complete — 13 Append mode jobs
 - [ ] **COMP-04**: Tier 4 complete — ~67 external module jobs
 - [ ] **COMP-05**: Tier 5 complete — 6 external module + Append jobs
@@ -72,7 +72,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ANTI-02 | Phase 1 | Complete |
 | ANTI-03 | Phase 1 | Complete |
 | COMP-01 | Phase 1 | Complete |
-| COMP-02 | Phase 2 | Pending |
+| COMP-02 | Phase 2 | Complete |
 | COMP-03 | Phase 3 | Pending |
 | COMP-04 | Phase 4 | Pending |
 | COMP-05 | Phase 5 | Pending |
