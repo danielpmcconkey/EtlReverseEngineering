@@ -7,26 +7,26 @@
 
 ### Per-Job Deliverables
 
-- [ ] **DELIV-01**: BRD with numbered requirements and evidence citing original code/data
-- [ ] **DELIV-02**: FSD with numbered specs, traceability to BRD numbers, evidence for each spec
-- [ ] **DELIV-03**: Test strategy with traceability to FSD/BRD numbers
-- [ ] **DELIV-04**: `_re` JSON job conf based on FSD, anti-patterns remediated
-- [ ] **DELIV-05**: External modules created ONLY when standard modules can't match output (FSD must cite evidence)
-- [ ] **DELIV-06**: Output manifesto listing every output (some jobs produce multiple)
-- [ ] **DELIV-07**: Proofmark config YAML per output with evidence for any non-strict column matching
-- [ ] **DELIV-08**: 92/92 Proofmark PASS across all effective dates
+- [x] **DELIV-01**: BRD with numbered requirements and evidence citing original code/data
+- [x] **DELIV-02**: FSD with numbered specs, traceability to BRD numbers, evidence for each spec
+- [x] **DELIV-03**: Test strategy with traceability to FSD/BRD numbers
+- [x] **DELIV-04**: `_re` JSON job conf based on FSD, anti-patterns remediated
+- [x] **DELIV-05**: External modules created ONLY when standard modules can't match output (FSD must cite evidence)
+- [x] **DELIV-06**: Output manifesto listing every output (some jobs produce multiple)
+- [x] **DELIV-07**: Proofmark config YAML per output with evidence for any non-strict column matching
+- [x] **DELIV-08**: 92/92 Proofmark PASS across all effective dates
 
 ### Process
 
-- [ ] **PROC-01**: Zero human input after planning — fully autonomous execution
-- [ ] **PROC-02**: Proofmark failure triggers triage -> RCA -> fix -> doc update -> retry (max 5 attempts)
+- [x] **PROC-01**: Zero human input after planning — fully autonomous execution
+- [x] **PROC-02**: Proofmark failure triggers triage -> RCA -> fix -> doc update -> retry (max 5 attempts)
 - [ ] **PROC-03**: Iterative learning — early tier results refine approach for later tiers
 
 ### Anti-Pattern Remediation
 
-- [ ] **ANTI-01**: Every job assessed against all 10 anti-patterns (AP1-AP10)
-- [ ] **ANTI-02**: AP3 (Unnecessary External Module) — SQL-first, external modules justified with evidence
-- [ ] **ANTI-03**: AP6 (Row-by-Row Iteration) — C# foreach converted to SQL set operations where possible
+- [x] **ANTI-01**: Every job assessed against all 10 anti-patterns (AP1-AP10)
+- [x] **ANTI-02**: AP3 (Unnecessary External Module) — SQL-first, external modules justified with evidence
+- [x] **ANTI-03**: AP6 (Row-by-Row Iteration) — C# foreach converted to SQL set operations where possible
 
 ### Completion
 
@@ -57,20 +57,20 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DELIV-01 | Phase 1 | Pending |
-| DELIV-02 | Phase 1 | Pending |
-| DELIV-03 | Phase 1 | Pending |
-| DELIV-04 | Phase 1 | Pending |
-| DELIV-05 | Phase 1 | Pending |
-| DELIV-06 | Phase 1 | Pending |
-| DELIV-07 | Phase 1 | Pending |
-| DELIV-08 | Phase 1 | Pending |
-| PROC-01 | Phase 1 | Pending |
-| PROC-02 | Phase 1 | Pending |
+| DELIV-01 | Phase 1 | Complete |
+| DELIV-02 | Phase 1 | Complete |
+| DELIV-03 | Phase 1 | Complete |
+| DELIV-04 | Phase 1 | Complete |
+| DELIV-05 | Phase 1 | Complete |
+| DELIV-06 | Phase 1 | Complete |
+| DELIV-07 | Phase 1 | Complete |
+| DELIV-08 | Phase 1 | Complete |
+| PROC-01 | Phase 1 | Complete |
+| PROC-02 | Phase 1 | Complete |
 | PROC-03 | Phase 1 | Pending |
-| ANTI-01 | Phase 1 | Pending |
-| ANTI-02 | Phase 1 | Pending |
-| ANTI-03 | Phase 1 | Pending |
+| ANTI-01 | Phase 1 | Complete |
+| ANTI-02 | Phase 1 | Complete |
+| ANTI-03 | Phase 1 | Complete |
 | COMP-01 | Phase 1 | Pending |
 | COMP-02 | Phase 2 | Pending |
 | COMP-03 | Phase 3 | Pending |

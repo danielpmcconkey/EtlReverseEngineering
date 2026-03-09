@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Infrastructure setup + BranchDirectory full RE workflow (template-setter)
+- [x] 01-01-PLAN.md — Infrastructure setup + BranchDirectory full RE workflow (template-setter)
 - [ ] 01-02-PLAN.md — ComplianceResolutionTime full RE workflow (trailer handling, AP4/AP8 remediation)
 - [ ] 01-03-PLAN.md — OverdraftFeeSummary full RE workflow + phase completion + lessons learned
 
@@ -124,7 +124,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Tier 1 - Pipeline Validation | 0/3 | Not started | - |
+| 1. Tier 1 - Pipeline Validation | 1/3 | In progress | - |
 | 2. Tier 2 - Simple Multi-Source | 0/3 | Not started | - |
 | 3. Tier 3 - Append Mode | 0/3 | Not started | - |
 | 4. Tier 4 - External Module Conversion | 0/5 | Not started | - |
