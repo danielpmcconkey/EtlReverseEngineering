@@ -47,12 +47,13 @@ Plans:
   2. Multi-source join patterns (2+ data sources) are handled correctly across all jobs
   3. Dependency chain Job 22 -> Job 24 -> Job 26 and Job 22 -> Job 25 executed in correct order
   4. Batch execution at 10-job scale completes autonomously without human intervention
-**Plans**: TBD
+**Plans:** 4 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
-- [ ] 02-03: TBD
+- [ ] 02-01-PLAN.md — RE 3 simple CSV jobs (CustomerAccountSummary, SecuritiesDirectory, TransactionSizeBuckets)
+- [ ] 02-02-PLAN.md — RE 3 CSV jobs with special handling (CardAuthorizationSummary, FeeWaiverAnalysis, TopBranches)
+- [ ] 02-03-PLAN.md — RE 2 Parquet jobs (CardStatusSnapshot, TopHoldingsByValue) -- first Parquet validation
+- [ ] 02-04-PLAN.md — RE 2 Parquet jobs (AccountOverdraftHistory, PreferenceChangeCount) + phase completion
 
 ### Phase 3: Tier 3 - Append Mode
 **Goal**: Append mode jobs are RE'd with correct chronological execution and cumulative output matching
@@ -125,7 +126,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Tier 1 - Pipeline Validation | 2/3 | In Progress|  |
-| 2. Tier 2 - Simple Multi-Source | 0/3 | Not started | - |
+| 2. Tier 2 - Simple Multi-Source | 0/4 | Not started | - |
 | 3. Tier 3 - Append Mode | 0/3 | Not started | - |
 | 4. Tier 4 - External Module Conversion | 0/5 | Not started | - |
 | 5. Tier 5 - External + Append | 0/2 | Not started | - |
