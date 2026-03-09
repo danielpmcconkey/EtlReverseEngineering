@@ -20,7 +20,7 @@
 
 - [x] **PROC-01**: Zero human input after planning — fully autonomous execution
 - [x] **PROC-02**: Proofmark failure triggers triage -> RCA -> fix -> doc update -> retry (max 5 attempts)
-- [ ] **PROC-03**: Iterative learning — early tier results refine approach for later tiers
+- [x] **PROC-03**: Iterative learning — early tier results refine approach for later tiers
 
 ### Anti-Pattern Remediation
 
@@ -30,7 +30,7 @@
 
 ### Completion
 
-- [ ] **COMP-01**: Tier 1 complete — 3 trivial jobs (pipeline validation)
+- [x] **COMP-01**: Tier 1 complete — 3 trivial jobs (pipeline validation)
 - [ ] **COMP-02**: Tier 2 complete — 10 simple multi-source jobs
 - [ ] **COMP-03**: Tier 3 complete — 13 Append mode jobs
 - [ ] **COMP-04**: Tier 4 complete — ~67 external module jobs
@@ -67,11 +67,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DELIV-08 | Phase 1 | Complete |
 | PROC-01 | Phase 1 | Complete |
 | PROC-02 | Phase 1 | Complete |
-| PROC-03 | Phase 1 | Pending |
+| PROC-03 | Phase 1 | Complete |
 | ANTI-01 | Phase 1 | Complete |
 | ANTI-02 | Phase 1 | Complete |
 | ANTI-03 | Phase 1 | Complete |
-| COMP-01 | Phase 1 | Pending |
+| COMP-01 | Phase 1 | Complete |
 | COMP-02 | Phase 2 | Pending |
 | COMP-03 | Phase 3 | Pending |
 | COMP-04 | Phase 4 | Pending |
