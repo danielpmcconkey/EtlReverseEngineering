@@ -64,12 +64,13 @@ Plans:
   2. Append mode execution runs dates in strict chronological order (Oct 1 through Dec 31)
   3. Cumulative output files grow correctly across successive dates (each date's file contains all prior data)
   4. Any Append-specific Proofmark config accommodations are documented with evidence
-**Plans**: TBD
+**Plans:** 4 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
-- [ ] 03-03: TBD
+- [ ] 03-01-PLAN.md — Blueprint sequencing fix + 4 simple Append CSV jobs (DailyWireVolume, PreferenceTrend, MerchantCategoryDirectory, CustomerSegmentMap)
+- [ ] 03-02-PLAN.md — 4 Append CSV jobs with trailers and dependency chain (DailyTransactionSummary, DailyTransactionVolume, MonthlyTransactionTrend, TransactionCategorySummary)
+- [ ] 03-03-PLAN.md — 3 BranchVisit Append jobs with additionalFilter + mostRecent (BranchVisitSummary, BranchVisitPurposeBreakdown, BranchVisitsByCustomerCsvAppendTrailer)
+- [ ] 03-04-PLAN.md — 2 Parquet Append jobs (CustomerAddressHistory, CustomerContactInfo) + phase completion (1196/1196)
 
 ### Phase 4: Tier 4 - External Module Conversion
 **Goal**: The majority of jobs (~67) are RE'd with SQL-first approach, converting C# external modules to SQL where possible
@@ -127,7 +128,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 |-------|----------------|--------|-----------|
 | 1. Tier 1 - Pipeline Validation | 3/3 | Complete | 2026-03-09 |
 | 2. Tier 2 - Simple Multi-Source | 4/4 | Complete | 2026-03-09 |
-| 3. Tier 3 - Append Mode | 0/3 | Not started | - |
+| 3. Tier 3 - Append Mode | 0/4 | Not started | - |
 | 4. Tier 4 - External Module Conversion | 0/5 | Not started | - |
 | 5. Tier 5 - External + Append | 0/2 | Not started | - |
 | 6. Tier 6 - Boss Level | 0/2 | Not started | - |
