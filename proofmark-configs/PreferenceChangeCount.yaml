@@ -1,0 +1,2 @@
+comparison_target: PreferenceChangeCount
+reader: parquet
