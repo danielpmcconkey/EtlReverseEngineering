@@ -31,12 +31,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Each `_re` job conf remediates identified anti-patterns with documented justification
   4. The full 13-step workflow executed autonomously with zero human input
   5. Lessons learned from Tier 1 are captured and available to inform Tier 2 approach
-**Plans**: TBD
+**Plans:** 3 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
-- [ ] 01-03: TBD
+- [ ] 01-01-PLAN.md — Infrastructure setup + BranchDirectory full RE workflow (template-setter)
+- [ ] 01-02-PLAN.md — ComplianceResolutionTime full RE workflow (trailer handling, AP4/AP8 remediation)
+- [ ] 01-03-PLAN.md — OverdraftFeeSummary full RE workflow + phase completion + lessons learned
 
 ### Phase 2: Tier 2 - Simple Multi-Source
 **Goal**: The RE workflow scales to multi-source join complexity at batch size, proving the pattern holds beyond trivial jobs
