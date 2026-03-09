@@ -1,22 +1,55 @@
-# SecuritiesDirectory — Test Strategy
+# SecuritiesDirectory -- Test Strategy
 
-**Traces to:** FSD.md, BRD.md in this directory
+**Job:** SecuritiesDirectory_RE
+**Traces to:** FSD (jobs/SecuritiesDirectory/FSD.md), BRD (jobs/SecuritiesDirectory/BRD.md)
 
 ---
 
-## Approach
+## Primary Validation
 
-Proofmark strict comparison of RE output vs V1 output across all 92 dates (2024-10-01 through 2024-12-31). No fuzzy columns, no excluded columns — the output should be byte-identical.
+### Proofmark Byte-Identical Comparison
+**Method:** Proofmark CSV comparison across all 92 effective dates (2024-10-01 through 2024-12-31).
 
-### TST-1: Strict Column Match (traces to FSD-4)
-All 8 columns compared strictly. No tolerances needed — this is a reference table with no computed values.
+**Config:** `proofmark-configs/SecuritiesDirectory.yaml` (header_rows: 1, trailer_rows: 0)
 
-### TST-2: Full Date Coverage (traces to BRD-5)
-All 92 dates must PASS. Since each date is independent (Overwrite mode), failures are isolated.
+**LHS (V1):** `{ETL_ROOT}/Output/curated/securities_directory/securities_directory/{date}/securities_directory.csv`
+**RHS (RE):** `{ETL_RE_OUTPUT}/securities_directory/securities_directory/{date}/securities_directory.csv`
 
-### TST-3: Row Count Validation (traces to FSD-4)
-Each date should produce exactly 50 data rows.
+**Pass criteria:** 92/92 PASS. Zero tolerance for differences.
 
-## Pass Criteria
+---
 
-100% PASS across all 92 dates in Proofmark. Zero exceptions.
+## Coverage Matrix
+
+| Dimension | Coverage | Notes |
+|-----------|----------|-------|
+| Effective dates | 92/92 | Oct 1 - Dec 31, 2024 |
+| Data rows per date | 50 | All securities present every date |
+| Columns | 8 | 7 from SQL + etl_effective_date |
+| Line endings | LF | Verified from V1 job conf |
+| Header | Present | Single header row |
+| Trailer | None | No trailer in V1 output |
+
+---
+
+## Traceability
+
+| Test Aspect | Traces to FSD | Traces to BRD |
+|-------------|---------------|---------------|
+| Row content match | FSD-SD-003 | BRD-SD-004, BRD-SD-005 |
+| Column schema match | FSD-SD-006 | BRD-SD-008 |
+| Header presence | FSD-SD-005 | BRD-SD-007 |
+| Line ending format | FSD-SD-005 | BRD-SD-006 |
+| Row count (50 data) | FSD-SD-003 | BRD-SD-009 |
+| No trailer | FSD-SD-005 | BRD-SD-010 |
+| Output path | FSD-SD-005 | BRD-SD-011 |
+
+---
+
+## Risk Assessment
+
+**Low risk.** SecuritiesDirectory is a simple pass-through listing:
+- Single source used in transformation (second source removed as AP1)
+- No aggregation, no joins, no complex business logic
+- Static row count across all dates (50 securities)
+- AP1 remediation removes unused data sourcing only -- SQL is unchanged
