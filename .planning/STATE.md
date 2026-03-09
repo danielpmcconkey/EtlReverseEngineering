@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Completed 02-04-PLAN.md (Phase 2 complete -- 920/920 PASS)
-last_updated: "2026-03-09T19:55:13.855Z"
-last_activity: 2026-03-09 -- Completed 02-04 AOH/PCC RE + Phase 2 verification (920/920 PASS, COMP-02)
+status: in-progress
+stopped_at: Completed 03-01-PLAN.md (4 simple Append jobs -- 368/368 PASS)
+last_updated: "2026-03-09T21:26:29Z"
+last_activity: 2026-03-09 -- Completed 03-01 DWV/PT/MCD/CSM Append mode RE (368/368 PASS)
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 8
+  completed_plans: 8
   percent: 100
 ---
 
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Output is king. Every RE'd job must produce byte-identical output across all 92 effective dates.
-**Current focus:** Phase 2 complete. Ready for Phase 3 - Tier 3 Append Mode.
+**Current focus:** Phase 3 in progress. 4/13 Append mode jobs complete. Ready for Wave 2.
 
 ## Current Position
 
-Phase: 2 of 6 (Tier 2 - Simple Multi-Source) -- COMPLETE
-Plan: 4 of 4 in current phase
-Status: Phase Complete
-Last activity: 2026-03-09 -- Completed 02-04 AOH/PCC RE + Phase 2 verification (920/920 PASS, COMP-02)
+Phase: 3 of 6 (Tier 3 - Append Mode) -- IN PROGRESS
+Plan: 1 of ? in current phase
+Status: Plan 03-01 Complete
+Last activity: 2026-03-09 -- Completed 03-01 DWV/PT/MCD/CSM Append mode RE (368/368 PASS)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 35 min
-- Total execution time: 4.3 hours
+- Total plans completed: 8
+- Average duration: 33 min
+- Total execution time: 4.6 hours
 
 **By Phase:**
 
@@ -45,10 +45,11 @@ Progress: [██████████] 100%
 |-------|-------|-------|----------|
 | 1 | 3 | 63 min | 21 min |
 | 2 | 4 | 195 min | 49 min |
+| 3 | 1 | 16 min | 16 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-03 (4 min), 02-01 (33 min), 02-02 (52 min), 02-03 (55 min), 02-04 (55 min)
-- Trend: Phase 2 averaged 49 min/plan. Queue contention and Proofmark race conditions dominated wait times.
+- Last 5 plans: 02-01 (33 min), 02-02 (52 min), 02-03 (55 min), 02-04 (55 min), 03-01 (16 min)
+- Trend: Phase 3 off to a fast start. Direct execution avoids host queue contention delays.
 
 *Updated after each plan completion*
 
@@ -91,6 +92,11 @@ Recent decisions affecting current work:
 - [02-04]: Proofmark trailer_match:skip for non-deterministic timestamp trailers
 - [02-04]: Empty Parquet dirs: both V1 and RE produce empty dirs for dates with no data -- treated as PASS
 - [02-04]: Phase 2 complete: 920/920 PASS across all 10 Tier 2 jobs (COMP-02)
+- [03-01]: AP1 MerchantCategoryDirectory: dead cards sourcing removed entirely (never referenced in SQL)
+- [03-01]: AP1 CustomerSegmentMap: dead branches sourcing removed entirely (never referenced in SQL)
+- [03-01]: AP10 DailyWireVolume: redundant WHERE clause retained (harmless, load-bearing)
+- [03-01]: Direct execution mode required for Append jobs: host can't resolve container paths
+- [03-01]: Blueprint sequencing fix: CRITICAL ORDERING CONSTRAINT added to re-blueprint.md
 
 ### Pending Todos
 
@@ -102,6 +108,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-09T19:46:17.000Z
-Stopped at: Completed 02-04-PLAN.md (Phase 2 complete -- 920/920 PASS)
+Last session: 2026-03-09T21:26:29Z
+Stopped at: Completed 03-01-PLAN.md (4 simple Append jobs -- 368/368 PASS)
 Resume file: None
