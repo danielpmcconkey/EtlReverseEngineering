@@ -12,8 +12,8 @@ Reverse engineer 105 production ETL jobs across 6 complexity tiers, starting wit
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Tier 1 - Pipeline Validation** - Establish full RE workflow on 3 trivial jobs; validate all deliverables and tooling end-to-end
-- [ ] **Phase 2: Tier 2 - Simple Multi-Source** - Scale to 10 jobs with multi-source joins; prove batch execution works
+- [x] **Phase 1: Tier 1 - Pipeline Validation** - Establish full RE workflow on 3 trivial jobs; validate all deliverables and tooling end-to-end
+- [x] **Phase 2: Tier 2 - Simple Multi-Source** - Scale to 10 jobs with multi-source joins; prove batch execution works
 - [ ] **Phase 3: Tier 3 - Append Mode** - 13 Append mode jobs requiring chronological date execution and cumulative output validation
 - [ ] **Phase 4: Tier 4 - External Module Conversion** - The bulk: ~67 jobs requiring C# analysis and SQL-first conversion
 - [ ] **Phase 5: Tier 5 - External + Append** - 6 jobs combining external module conversion with Append mode constraints
@@ -47,13 +47,13 @@ Plans:
   2. Multi-source join patterns (2+ data sources) are handled correctly across all jobs
   3. Dependency chain Job 22 -> Job 24 -> Job 26 and Job 22 -> Job 25 executed in correct order
   4. Batch execution at 10-job scale completes autonomously without human intervention
-**Plans:** 2/4 plans executed
+**Plans:** 4/4 plans executed
 
 Plans:
 - [x] 02-01-PLAN.md — RE 3 simple CSV jobs (CustomerAccountSummary, SecuritiesDirectory, TransactionSizeBuckets)
-- [ ] 02-02-PLAN.md — RE 3 CSV jobs with special handling (CardAuthorizationSummary, FeeWaiverAnalysis, TopBranches)
-- [ ] 02-03-PLAN.md — RE 2 Parquet jobs (CardStatusSnapshot, TopHoldingsByValue) -- first Parquet validation
-- [ ] 02-04-PLAN.md — RE 2 Parquet jobs (AccountOverdraftHistory, PreferenceChangeCount) + phase completion
+- [x] 02-02-PLAN.md — RE 3 CSV jobs with special handling (CardAuthorizationSummary, FeeWaiverAnalysis, TopBranches)
+- [x] 02-03-PLAN.md — RE 2 Parquet jobs (CardStatusSnapshot, TopHoldingsByValue) -- first Parquet validation
+- [x] 02-04-PLAN.md — RE 2 Parquet jobs (AccountOverdraftHistory, PreferenceChangeCount) + phase completion
 
 ### Phase 3: Tier 3 - Append Mode
 **Goal**: Append mode jobs are RE'd with correct chronological execution and cumulative output matching
@@ -126,7 +126,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Tier 1 - Pipeline Validation | 3/3 | Complete | 2026-03-09 |
-| 2. Tier 2 - Simple Multi-Source | 2/4 | In Progress|  |
+| 2. Tier 2 - Simple Multi-Source | 4/4 | Complete | 2026-03-09 |
 | 3. Tier 3 - Append Mode | 0/3 | Not started | - |
 | 4. Tier 4 - External Module Conversion | 0/5 | Not started | - |
 | 5. Tier 5 - External + Append | 0/2 | Not started | - |
