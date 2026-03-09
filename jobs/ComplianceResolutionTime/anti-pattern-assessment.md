@@ -16,7 +16,7 @@
 | AP5 | Asymmetric Null/Default Handling | **FOUND** | Documented only |
 | AP6 | Row-by-Row Iteration | N/A | None |
 | AP7 | Magic Values | Clean | None |
-| AP8 | Complex/Dead SQL | **FOUND** | Remediated |
+| AP8 | Complex/Dead SQL | **FOUND** | Partially remediated |
 | AP9 | Misleading Names | Clean | None |
 | AP10 | Over-Sourcing Date Ranges | Clean | None |
 
@@ -58,17 +58,17 @@ This is V1 behavior and is **NOT changed** in RE. Output must be byte-identical,
 **Finding:** Clean. The `'Cleared'` status filter is a domain value, not a magic number. No hardcoded thresholds, date boundaries, or unexplained constants.
 
 ### AP8 -- Complex/Dead SQL
-**Finding:** **FOUND (two issues).**
+**Finding:** **FOUND (two issues, one remediated, one retained).**
 
-**Issue 1: Cartesian join hack (`JOIN compliance_events ON 1=1`)**
-V1 SQL joins the `resolved` CTE back to the full `compliance_events` table with `ON 1=1` (cartesian join) solely to access `compliance_events.ifw_effective_date`. This is unnecessary because `ifw_effective_date` is available on every row in `compliance_events`, including the rows already selected into the `resolved` CTE. The GROUP BY collapses the cartesian explosion, so the output is correct, but the join forces the database to create N*M intermediate rows before aggregation.
+**Issue 1: Cartesian join (`JOIN compliance_events ON 1=1`) -- RETAINED**
+V1 SQL joins the `resolved` CTE back to the full `compliance_events` table with `ON 1=1` (cartesian join). Initially assessed as a hack to access `compliance_events.ifw_effective_date`, but analysis revealed it is **load-bearing**: the cartesian join inflates `COUNT(*)` and `SUM(days_to_resolve)` by a factor of N (total compliance_events rows per date = 115). V1 output reflects these inflated values (e.g., AML_FLAG: resolved_count=1380 = 12 actual resolved events * 115 total rows). Removing the join would produce resolved_count=12, breaking byte-identical output.
 
-**Remediation:** Access `ifw_effective_date` directly from `compliance_events` within the `resolved` CTE. No join needed.
+**NOT remediated.** The cartesian join must be preserved to match V1 output. Whether the inflated counts represent correct business intent or an original coding error is outside the scope of RE. The avg_resolution_days values are unaffected because the inflation factor cancels in the integer division (23920/1380 = 208/12 = 17).
 
-**Issue 2: Unused ROW_NUMBER**
+**Issue 2: Unused ROW_NUMBER -- REMEDIATED**
 V1 SQL computes `ROW_NUMBER() OVER (PARTITION BY event_type ORDER BY event_date) AS rn` in the `resolved` CTE, but `rn` is never referenced in the outer SELECT or in any WHERE clause. The window function is computed for every row and then thrown away during GROUP BY aggregation.
 
-**Remediation:** Removed the `ROW_NUMBER()` window function entirely.
+**Remediation:** Removed the `ROW_NUMBER()` window function entirely. This is pure dead code removal with zero impact on output.
 
 ### AP9 -- Misleading Names
 **Finding:** Clean. Job name "ComplianceResolutionTime" accurately describes the output: statistics about how long compliance events take to resolve.
