@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Completed 01-03-PLAN.md (OverdraftFeeSummary RE -- Phase 1 complete)
-last_updated: "2026-03-09T17:19:10.358Z"
-last_activity: 2026-03-09 -- Completed 01-03 OverdraftFeeSummary RE (Phase 1 done, 276/276 PASS)
+status: in-progress
+stopped_at: Completed 02-01-PLAN.md (3 simple CSV multi-source jobs)
+last_updated: "2026-03-09T19:22:00.000Z"
+last_activity: 2026-03-09 -- Completed 02-01 CustomerAccountSummary/SecuritiesDirectory/TransactionSizeBuckets RE (276/276 PASS)
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 100
+  total_plans: 7
+  completed_plans: 4
+  percent: 57
 ---
 
 # Project State
@@ -21,33 +21,34 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Output is king. Every RE'd job must produce byte-identical output across all 92 effective dates.
-**Current focus:** Phase 1 - Tier 1 Pipeline Validation
+**Current focus:** Phase 2 - Tier 2 Simple Multi-Source
 
 ## Current Position
 
-Phase: 1 of 6 (Tier 1 - Pipeline Validation) -- COMPLETE
-Plan: 3 of 3 in current phase
-Status: Phase Complete
-Last activity: 2026-03-09 -- Completed 01-03 OverdraftFeeSummary RE (Phase 1 done, 276/276 PASS)
+Phase: 2 of 6 (Tier 2 - Simple Multi-Source)
+Plan: 1 of 4 in current phase
+Status: In Progress
+Last activity: 2026-03-09 -- Completed 02-01 CAS/SD/TSB RE (276/276 PASS, batch execution proven)
 
-Progress: [██████████] 100%
+Progress: [█████░░░░░] 57%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 21 min
-- Total execution time: 1.05 hours
+- Total plans completed: 4
+- Average duration: 24 min
+- Total execution time: 1.6 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1 | 3 | 63 min | 21 min |
+| 2 | 1 | 33 min | 33 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (3 min), 01-02 (56 min), 01-03 (4 min)
-- Trend: Template reuse drives velocity. Job 3 fast like Job 1; Job 2 was outlier due to infra setup + cartesian join discovery
+- Last 5 plans: 01-01 (3 min), 01-02 (56 min), 01-03 (4 min), 02-01 (33 min)
+- Trend: Phase 2 slower due to host service contention requiring direct execution workaround
 
 *Updated after each plan completion*
 
@@ -70,6 +71,11 @@ Recent decisions affecting current work:
 - [01-03]: AP8 full CTE removal: dead ROW_NUMBER CTE removed entirely (no WHERE, alias never referenced)
 - [01-03]: AP4 aggressive: 5 of 7 columns removed from DataSourcing (most aggressive AP4 in Tier 1)
 - [01-03]: Tier 1 complete: 276/276 PASS confirms workflow is production-ready for Tier 2
+- [02-01]: CAS clean: all columns used, LEFT JOIN meaningful, no remediation needed
+- [02-01]: SD AP1: holdings DataSourcing removed entirely (never referenced in SQL)
+- [02-01]: TSB triple remediation: AP1 (accounts removed), AP8 (dead ROW_NUMBER CTE), AP4 (4 cols to 1)
+- [02-01]: CustomerAccountSummaryBuilder.cs correctly ignored (exists but not referenced by V1 conf)
+- [02-01]: Direct execution required: host service contention prevents queue-based execution
 
 ### Pending Todos
 
@@ -77,10 +83,10 @@ None yet.
 
 ### Blockers/Concerns
 
-None yet.
+- Host-side ETL and Proofmark services race with container services for queue claims. Workaround: direct execution mode and reset-and-retry for Proofmark.
 
 ## Session Continuity
 
-Last session: 2026-03-09T17:14:00.000Z
-Stopped at: Completed 01-03-PLAN.md (OverdraftFeeSummary RE -- Phase 1 complete)
+Last session: 2026-03-09T19:22:00.000Z
+Stopped at: Completed 02-01-PLAN.md (3 simple CSV multi-source jobs)
 Resume file: None
