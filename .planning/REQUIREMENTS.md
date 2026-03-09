@@ -19,12 +19,12 @@
 ### Process
 
 - [ ] **PROC-01**: Zero human input after planning — fully autonomous execution
-- [ ] **PROC-02**: Proofmark failure triggers triage → RCA → fix → doc update → retry (max 5 attempts)
+- [ ] **PROC-02**: Proofmark failure triggers triage -> RCA -> fix -> doc update -> retry (max 5 attempts)
 - [ ] **PROC-03**: Iterative learning — early tier results refine approach for later tiers
 
 ### Anti-Pattern Remediation
 
-- [ ] **ANTI-01**: Every job assessed against all 10 anti-patterns (AP1–AP10)
+- [ ] **ANTI-01**: Every job assessed against all 10 anti-patterns (AP1-AP10)
 - [ ] **ANTI-02**: AP3 (Unnecessary External Module) — SQL-first, external modules justified with evidence
 - [ ] **ANTI-03**: AP6 (Row-by-Row Iteration) — C# foreach converted to SQL set operations where possible
 
@@ -57,13 +57,32 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (populated by roadmapper) | | |
+| DELIV-01 | Phase 1 | Pending |
+| DELIV-02 | Phase 1 | Pending |
+| DELIV-03 | Phase 1 | Pending |
+| DELIV-04 | Phase 1 | Pending |
+| DELIV-05 | Phase 1 | Pending |
+| DELIV-06 | Phase 1 | Pending |
+| DELIV-07 | Phase 1 | Pending |
+| DELIV-08 | Phase 1 | Pending |
+| PROC-01 | Phase 1 | Pending |
+| PROC-02 | Phase 1 | Pending |
+| PROC-03 | Phase 1 | Pending |
+| ANTI-01 | Phase 1 | Pending |
+| ANTI-02 | Phase 1 | Pending |
+| ANTI-03 | Phase 1 | Pending |
+| COMP-01 | Phase 1 | Pending |
+| COMP-02 | Phase 2 | Pending |
+| COMP-03 | Phase 3 | Pending |
+| COMP-04 | Phase 4 | Pending |
+| COMP-05 | Phase 5 | Pending |
+| COMP-06 | Phase 6 | Pending |
 
 **Coverage:**
 - v1 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17 ⚠️
+- Mapped to phases: 17
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-09*
-*Last updated: 2026-03-09 after initial definition*
+*Last updated: 2026-03-09 after roadmap creation*
