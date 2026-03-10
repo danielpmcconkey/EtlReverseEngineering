@@ -1,5 +1,0 @@
-comparison_target: CustomerAccountSummary
-reader: csv
-csv:
-  header_rows: 1
-  trailer_rows: 0
