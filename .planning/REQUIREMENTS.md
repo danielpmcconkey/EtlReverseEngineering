@@ -89,13 +89,39 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (populated by roadmap) | | |
+| QUEUE-01 | Phase 1 | Pending |
+| QUEUE-02 | Phase 1 | Pending |
+| QUEUE-03 | Phase 1 | Pending |
+| QUEUE-04 | Phase 1 | Pending |
+| QUEUE-05 | Phase 1 | Pending |
+| SM-01 | Phase 2 | Pending |
+| SM-02 | Phase 2 | Pending |
+| SM-03 | Phase 5 | Pending |
+| SM-04 | Phase 5 | Pending |
+| SM-05 | Phase 5 | Pending |
+| SM-06 | Phase 5 | Pending |
+| PIPE-01 | Phase 2 | Pending |
+| PIPE-02 | Phase 2 | Pending |
+| PIPE-03 | Phase 2 | Pending |
+| PIPE-04 | Phase 2 | Pending |
+| PIPE-05 | Phase 2 | Pending |
+| PIPE-06 | Phase 2 | Pending |
+| PIPE-07 | Phase 2 | Pending |
+| PIPE-08 | Phase 6 | Pending |
+| WORK-01 | Phase 3 | Pending |
+| WORK-02 | Phase 3 | Pending |
+| WORK-03 | Phase 3 | Pending |
+| WORK-04 | Phase 3 | Pending |
+| AGENT-01 | Phase 4 | Pending |
+| AGENT-02 | Phase 4 | Pending |
+| AGENT-03 | Phase 4 | Pending |
+| AGENT-04 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 23 total
-- Mapped to phases: 0
-- Unmapped: 23 ⚠️
+- v1 requirements: 27 total
+- Mapped to phases: 27
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-10*
-*Last updated: 2026-03-10 after initial definition*
+*Last updated: 2026-03-10 after roadmap creation*
