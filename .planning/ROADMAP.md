@@ -44,11 +44,11 @@ Plans:
   3. The Mth consecutive Conditional at the same review node auto-promotes to Fail (incrementing the main retry counter and rewinding)
   4. A job reaching N total Fails is sent to DEAD_LETTER instead of rewinding again
   5. Per-node conditional counters reset to 0 on success at that node AND on rewind past that node
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md — Data layer: REVIEW_ROUTING dict, transition table expansion with Conditional/Fail/response edges, 7 response node stubs
+- [ ] 02-02-PLAN.md — Engine logic: counter semantics, auto-promotion, DEAD_LETTER, rewind counter reset, integration tests
 
 ### Phase 3: FBR Gauntlet, Triage, and Validation Run
 **Goal**: The FBR 6-gate gauntlet and 7-step triage sub-pipeline both work correctly, and a batch of N jobs with RNG outcomes exercises all major transition paths
