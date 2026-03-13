@@ -55,10 +55,29 @@ _REVIEW_NODES: set[str] = {
     "FinalSignOff",
 }
 
+# Review routing: review_node -> (response_node, rewind_target).
+# Used to expand TRANSITION_TABLE with Conditional/Fail/response-SUCCESS edges.
+REVIEW_ROUTING: dict[str, tuple[str, str]] = {
+    "ReviewBrd":             ("WriteBrdResponse",          "WriteBrd"),
+    "ReviewBdd":             ("WriteBddResponse",          "WriteBddTestArch"),
+    "ReviewFsd":             ("WriteFsdResponse",          "WriteFsd"),
+    "ReviewJobArtifacts":    ("BuildJobArtifactsResponse", "BuildJobArtifacts"),
+    "ReviewProofmarkConfig": ("BuildProofmarkResponse",    "BuildProofmarkConfig"),
+    "ReviewUnitTests":       ("BuildUnitTestsResponse",    "BuildUnitTests"),
+}
+
+# All response node names (NodeType.WORK -- they write/build, not review).
+_RESPONSE_NODES: set[str] = {response for response, _ in REVIEW_ROUTING.values()} | {
+    "TriageProofmarkFailures",
+}
+
 NODE_TYPES: dict[str, NodeType] = {
     node: NodeType.REVIEW if node in _REVIEW_NODES else NodeType.WORK
     for node in HAPPY_PATH
 }
+# Response nodes are WORK type (not in HAPPY_PATH, so must be added separately).
+for _response_node in _RESPONSE_NODES:
+    NODE_TYPES[_response_node] = NodeType.WORK
 
 # Happy-path transition table: (node_name, Outcome) -> next_node.
 # WORK nodes transition on SUCCESS, REVIEW nodes on APPROVE.
@@ -68,6 +87,15 @@ for i, node in enumerate(HAPPY_PATH):
     next_node = HAPPY_PATH[i + 1] if i + 1 < len(HAPPY_PATH) else "COMPLETE"
     outcome = Outcome.APPROVE if NODE_TYPES[node] == NodeType.REVIEW else Outcome.SUCCESS
     TRANSITION_TABLE[(node, outcome)] = next_node
+
+# Review branching edges: CONDITIONAL -> response, FAIL -> rewind, response SUCCESS -> reviewer.
+for _review_node, (_response_node, _rewind_target) in REVIEW_ROUTING.items():
+    TRANSITION_TABLE[(_review_node, Outcome.CONDITIONAL)] = _response_node
+    TRANSITION_TABLE[(_review_node, Outcome.FAIL)] = _rewind_target
+    TRANSITION_TABLE[(_response_node, Outcome.SUCCESS)] = _review_node
+
+# TriageProofmarkFailures placeholder: SUCCESS routes back to ExecuteProofmark (Phase 3 will own this).
+TRANSITION_TABLE[("TriageProofmarkFailures", Outcome.SUCCESS)] = "ExecuteProofmark"
 
 
 def validate_transition_table() -> list[str]:
