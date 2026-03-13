@@ -39,6 +39,7 @@ class JobState:
     main_retry_count: int = 0
     conditional_counts: dict[str, int] = field(default_factory=dict)
     last_rejection_reason: str | None = None
+    fbr_return_pending: bool = False
 
 
 @dataclass

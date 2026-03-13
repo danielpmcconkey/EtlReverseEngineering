@@ -13,6 +13,7 @@ from workflow_engine.logging import configure_logging
 from workflow_engine.models import EngineConfig, JobState, Outcome
 from workflow_engine.nodes import create_node_registry
 from workflow_engine.transitions import (
+    FBR_ROUTING,
     HAPPY_PATH,
     REVIEW_ROUTING,
     TRANSITION_TABLE,
@@ -62,6 +63,10 @@ class Engine:
             )
             job.last_rejection_reason = f"CONDITIONAL at {node_name}"
 
+            # Set fbr_return_pending on FBR gate CONDITIONAL (never on FAIL)
+            if node_name in FBR_ROUTING:
+                job.fbr_return_pending = True
+
             if (
                 job.conditional_counts[node_name]
                 >= self._config.max_conditional_per_node
@@ -79,6 +84,9 @@ class Engine:
             # Reset downstream conditionals on rewind
             if node_name in REVIEW_ROUTING:
                 _, rewind_target = REVIEW_ROUTING[node_name]
+                self._reset_downstream_conditionals(job, rewind_target)
+            elif node_name in FBR_ROUTING:
+                _, rewind_target = FBR_ROUTING[node_name]
                 self._reset_downstream_conditionals(job, rewind_target)
 
         return outcome
@@ -123,6 +131,16 @@ class Engine:
                 )
             next_node = TRANSITION_TABLE[key]
 
+            # FBR intercept: if review node approves while fbr_return_pending,
+            # redirect to FBR_BrdCheck to restart the gauntlet.
+            if (
+                outcome == Outcome.APPROVE
+                and job.fbr_return_pending
+                and job.current_node in REVIEW_ROUTING
+            ):
+                next_node = "FBR_BrdCheck"
+                job.fbr_return_pending = False
+
             log.info(
                 "transition",
                 node=job.current_node,
@@ -137,6 +155,10 @@ class Engine:
                 job.status = "COMPLETE"
             else:
                 job.current_node = next_node
+                # Clear fbr_return_pending on entry to FBR_BrdCheck
+                # (whether via intercept or natural replay after FAIL rewind)
+                if next_node == "FBR_BrdCheck":
+                    job.fbr_return_pending = False
 
         log.info("job_complete", final_status=job.status)
         return job

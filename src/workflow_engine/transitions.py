@@ -94,6 +94,30 @@ for _review_node, (_response_node, _rewind_target) in REVIEW_ROUTING.items():
     TRANSITION_TABLE[(_review_node, Outcome.FAIL)] = _rewind_target
     TRANSITION_TABLE[(_response_node, Outcome.SUCCESS)] = _review_node
 
+# Response node FAILURE edges: (response_node, FAILURE) -> rewind_target.
+# Deferred from Phase 2 -- a response node that fails routes to the same rewind target
+# as the paired review node's FAIL edge.
+for _review_node, (_response_node, _rewind_target) in REVIEW_ROUTING.items():
+    TRANSITION_TABLE[(_response_node, Outcome.FAILURE)] = _rewind_target
+
+# FBR routing: fbr_gate -> (response_node, rewind_target).
+# FBR gates reuse the same response nodes as in-flow review. No new response nodes needed.
+FBR_ROUTING: dict[str, tuple[str, str]] = {
+    "FBR_BrdCheck":       ("WriteBrdResponse",          "WriteBrd"),
+    "FBR_BddCheck":       ("WriteBddResponse",          "WriteBddTestArch"),
+    "FBR_FsdCheck":       ("WriteFsdResponse",          "WriteFsd"),
+    "FBR_ArtifactCheck":  ("BuildJobArtifactsResponse", "BuildJobArtifacts"),
+    "FBR_ProofmarkCheck": ("BuildProofmarkResponse",    "BuildProofmarkConfig"),
+    "FBR_UnitTestCheck":  ("BuildUnitTestsResponse",    "BuildUnitTests"),
+}
+
+# FBR branching edges: CONDITIONAL -> response, FAIL -> rewind.
+# Note: NO (response_node, SUCCESS) edges added here -- they already exist from REVIEW_ROUTING wiring.
+# The fbr_return_pending flag (engine.py) handles post-fix routing back to FBR_BrdCheck.
+for _fbr_gate, (_response_node, _rewind_target) in FBR_ROUTING.items():
+    TRANSITION_TABLE[(_fbr_gate, Outcome.CONDITIONAL)] = _response_node
+    TRANSITION_TABLE[(_fbr_gate, Outcome.FAIL)] = _rewind_target
+
 # TriageProofmarkFailures placeholder: SUCCESS routes back to ExecuteProofmark (Phase 3 will own this).
 TRANSITION_TABLE[("TriageProofmarkFailures", Outcome.SUCCESS)] = "ExecuteProofmark"
 

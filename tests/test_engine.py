@@ -15,7 +15,7 @@ import pytest
 from workflow_engine.engine import Engine
 from workflow_engine.models import EngineConfig, JobState, Outcome
 from workflow_engine.nodes import Node
-from workflow_engine.transitions import HAPPY_PATH, REVIEW_ROUTING, TRANSITION_TABLE
+from workflow_engine.transitions import FBR_ROUTING, HAPPY_PATH, REVIEW_ROUTING, TRANSITION_TABLE
 
 
 class ScriptedNode(Node):
@@ -406,4 +406,103 @@ class TestReviewBranching:
         # last_rejection_reason should reflect ReviewBdd, not ReviewBrd
         assert job.last_rejection_reason is not None
         assert "ReviewBdd" in job.last_rejection_reason
+        assert job.status == "COMPLETE"
+
+
+class TestFBRGauntlet:
+    """FBR-02, FBR-03, FBR-04: FBR gauntlet engine logic tests."""
+
+    def _make_engine(self, **kwargs) -> Engine:
+        defaults = dict(n_jobs=1, max_main_retries=5, max_conditional_per_node=3, seed=None)
+        defaults.update(kwargs)
+        return Engine(EngineConfig(**defaults))
+
+    def test_fbr_conditional_restarts_gauntlet(self) -> None:
+        """FBR-02: FBR CONDITIONAL -> response -> review APPROVE -> restart at FBR_BrdCheck."""
+        cap = _capture_logs()
+        engine = self._make_engine()
+        # FBR_BrdCheck: CONDITIONAL first time, then APPROVE on all subsequent
+        engine._registry["FBR_BrdCheck"] = ScriptedNode(
+            [Outcome.CONDITIONAL], default=Outcome.APPROVE
+        )
+        # ReviewBrd will be visited after response node. APPROVE routes back to FBR_BrdCheck
+        # (because fbr_return_pending is True).
+        job = engine.run_job(JobState(job_id="fbr02-test"))
+
+        transitions = [e for e in cap if e.get("event") == "transition"]
+        nodes_visited = [t["node"] for t in transitions]
+
+        # Find FBR_BrdCheck CONDITIONAL -> WriteBrdResponse -> ReviewBrd -> FBR_BrdCheck
+        idx = nodes_visited.index("FBR_BrdCheck")
+        assert transitions[idx]["outcome"] == "CONDITIONAL"
+        assert nodes_visited[idx + 1] == "WriteBrdResponse"
+        assert nodes_visited[idx + 2] == "ReviewBrd"
+        # After ReviewBrd APPROVE with fbr_return_pending, should go to FBR_BrdCheck
+        assert nodes_visited[idx + 3] == "FBR_BrdCheck"
+        assert job.status == "COMPLETE"
+
+    def test_fbr_fail_rewinds_to_write_node(self) -> None:
+        """FBR-03: FBR FAIL rewinds to original write node."""
+        cap = _capture_logs()
+        engine = self._make_engine()
+        # FBR_FsdCheck: FAIL first, then APPROVE on subsequent visits
+        engine._registry["FBR_FsdCheck"] = ScriptedNode(
+            [Outcome.FAIL], default=Outcome.APPROVE
+        )
+        job = engine.run_job(JobState(job_id="fbr03-test"))
+
+        transitions = [e for e in cap if e.get("event") == "transition"]
+        nodes_visited = [t["node"] for t in transitions]
+
+        # FBR_FsdCheck FAIL -> WriteFsd (rewind target from FBR_ROUTING)
+        idx = nodes_visited.index("FBR_FsdCheck")
+        assert transitions[idx]["outcome"] == "FAIL"
+        assert nodes_visited[idx + 1] == "WriteFsd"
+        assert job.status == "COMPLETE"
+        assert job.main_retry_count == 1
+
+    def test_fbr_return_pending_flag(self) -> None:
+        """FBR-04: fbr_return_pending is cleared after routing to FBR_BrdCheck."""
+        cap = _capture_logs()
+        engine = self._make_engine()
+        # FBR_ArtifactCheck: CONDITIONAL once, then APPROVE
+        engine._registry["FBR_ArtifactCheck"] = ScriptedNode(
+            [Outcome.CONDITIONAL], default=Outcome.APPROVE
+        )
+        job = engine.run_job(JobState(job_id="fbr04-test"))
+
+        transitions = [e for e in cap if e.get("event") == "transition"]
+        nodes_visited = [t["node"] for t in transitions]
+
+        # After fix loop, review APPROVE should route to FBR_BrdCheck
+        # Find ReviewJobArtifacts after BuildJobArtifactsResponse
+        response_idx = nodes_visited.index("BuildJobArtifactsResponse")
+        assert nodes_visited[response_idx + 1] == "ReviewJobArtifacts"
+        assert nodes_visited[response_idx + 2] == "FBR_BrdCheck"
+
+        # Flag should be cleared
+        assert job.fbr_return_pending is False
+        assert job.status == "COMPLETE"
+
+    def test_fbr_conditional_auto_promotes_to_fail(self) -> None:
+        """FBR gate: M consecutive CONDITIONALs auto-promotes to FAIL, rewinds to write node."""
+        cap = _capture_logs()
+        engine = self._make_engine(max_conditional_per_node=2)
+        # FBR_BrdCheck: 2 CONDITIONALs -> auto-promote to FAIL -> rewind to WriteBrd
+        engine._registry["FBR_BrdCheck"] = ScriptedNode(
+            [Outcome.CONDITIONAL, Outcome.CONDITIONAL], default=Outcome.APPROVE
+        )
+        job = engine.run_job(JobState(job_id="fbr-auto-promote-test"))
+
+        transitions = [e for e in cap if e.get("event") == "transition"]
+        nodes_visited = [t["node"] for t in transitions]
+
+        # After auto-promotion, should rewind to WriteBrd
+        # Find the second FBR_BrdCheck visit (after response -> review -> restart)
+        fbr_indices = [i for i, n in enumerate(nodes_visited) if n == "FBR_BrdCheck"]
+        # The second CONDITIONAL auto-promotes to FAIL
+        last_fbr_fail_idx = fbr_indices[1]
+        assert transitions[last_fbr_fail_idx]["outcome"] == "FAIL"
+        assert nodes_visited[last_fbr_fail_idx + 1] == "WriteBrd"
+        assert job.main_retry_count == 1
         assert job.status == "COMPLETE"

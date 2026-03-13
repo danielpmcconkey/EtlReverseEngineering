@@ -40,6 +40,14 @@ class TestOutcome:
         assert names == {"SUCCESS", "FAILURE", "APPROVE", "CONDITIONAL", "FAIL"}
 
 
+class TestJobStateFields:
+    def test_fbr_return_pending_default(self) -> None:
+        """FBR-01: JobState has fbr_return_pending field, defaults to False."""
+        job = JobState(job_id="fbr-field-test")
+        assert hasattr(job, "fbr_return_pending")
+        assert job.fbr_return_pending is False
+
+
 class TestNodeType:
     def test_node_type_enum(self) -> None:
         members = list(NodeType)
