@@ -29,8 +29,11 @@ The state machine correctly implements the transition table — rewinds, conditi
 - [ ] FBR depth cap prevents infinite gauntlet loops
 - [ ] 7-step proofmark triage sub-pipeline (T1-T7)
 - [ ] Triage routing: earliest fault wins, no faults → DEAD_LETTER
-- [ ] Triage retry counter with its own exhaustion → DEAD_LETTER
-- [ ] Per-node retry limits with exhaustion → DEAD_LETTER
+- [ ] Two counter types: main retry (N, per job) and conditional (M, per node instance)
+- [ ] Main retry increments on any full Fail; reaching N → DEAD_LETTER
+- [ ] Conditional counter reaching M auto-promotes to Fail (incrementing main retry)
+- [ ] Conditional counters reset to 0 on success or on rewind past that node
+- [ ] N and M are configurable with sensible defaults
 - [ ] Stubbed nodes: review nodes return RNG Approve/Conditional/Fail, non-review return RNG Success/Failure
 - [ ] Logging: job ID, node name, outcome, retry counts, transitions (structured enough for post-hoc agent analysis)
 - [ ] Run N jobs through full pipeline to exercise all paths
