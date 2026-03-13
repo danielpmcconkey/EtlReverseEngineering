@@ -60,12 +60,11 @@ Plans:
   3. FBR Fail rewinds to original write node and replays forward, naturally arriving back at FBR_BrdCheck through the pipeline
   4. Triage sub-pipeline enters on ExecuteProofmark failure, runs T1-T7, and routes to the earliest fault found
   5. Running 100+ jobs with RNG outcomes produces logs showing rewinds, conditional loops, FBR restarts, triage routing, and DEAD_LETTER exhaustion all occurred
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
-- [ ] 03-03: TBD
+- [ ] 03-01-PLAN.md — FBR gauntlet: FBR_ROUTING dict, CONDITIONAL/FAIL edges, fbr_return_pending flag, response node FAILURE edges
+- [ ] 03-02-PLAN.md — Triage pipeline: TRIAGE_NODES, DiagnosticStubNode, TriageRouterNode, TRIAGE_ROUTE engine handling, 200-job validation run
 
 ## Progress
 
@@ -76,4 +75,4 @@ Phases execute in numeric order: 1 -> 2 -> 3
 |-------|----------------|--------|-----------|
 | 1. Foundation and Happy Path Engine | 2/2 | Complete   | 2026-03-13 |
 | 2. Review Branching and Counter Mechanics | 1/2 | In Progress|  |
-| 3. FBR Gauntlet, Triage, and Validation Run | 0/3 | Not started | - |
+| 3. FBR Gauntlet, Triage, and Validation Run | 0/2 | Not started | - |
