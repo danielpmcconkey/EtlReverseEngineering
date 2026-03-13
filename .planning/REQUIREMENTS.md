@@ -9,9 +9,9 @@ Requirements for v0.1 release. Each maps to roadmap phases.
 
 ### State Model
 
-- [ ] **SM-01**: Job state tracks current node, main retry counter, and per-node conditional counters
-- [ ] **SM-02**: Transition table is declarative data (dict-based), not procedural if/else
-- [ ] **SM-03**: Main retry counter (N) and conditional limit (M) are configurable with sensible defaults
+- [x] **SM-01**: Job state tracks current node, main retry counter, and per-node conditional counters
+- [x] **SM-02**: Transition table is declarative data (dict-based), not procedural if/else
+- [x] **SM-03**: Main retry counter (N) and conditional limit (M) are configurable with sensible defaults
 - [ ] **SM-04**: Main retry counter increments on any full Fail at any review node
 - [ ] **SM-05**: Main retry counter reaching N sends job to DEAD_LETTER
 - [ ] **SM-06**: Per-node conditional counter increments on Conditional outcome at that review node
@@ -22,9 +22,9 @@ Requirements for v0.1 release. Each maps to roadmap phases.
 ### Happy Path
 
 - [ ] **HP-01**: 27 happy-path nodes execute in order from LocateOgSourceFiles through FinalSignOff -> COMPLETE
-- [ ] **HP-02**: Each node is a stub with a comment describing what the real agent will do
-- [ ] **HP-03**: Non-review stubs return Success/Failure via RNG
-- [ ] **HP-04**: Review stubs return Approve/Conditional/Fail via RNG
+- [x] **HP-02**: Each node is a stub with a comment describing what the real agent will do
+- [x] **HP-03**: Non-review stubs return Success/Failure via RNG
+- [x] **HP-04**: Review stubs return Approve/Conditional/Fail via RNG
 
 ### Review Branching
 
@@ -60,14 +60,14 @@ Requirements for v0.1 release. Each maps to roadmap phases.
 
 ### Logging
 
-- [ ] **LOG-01**: Structured JSON logging via structlog
+- [x] **LOG-01**: Structured JSON logging via structlog
 - [ ] **LOG-02**: Every transition logged: job ID, node name, outcome, main retry count, conditional counts
 - [ ] **LOG-03**: Logs are sufficient for post-hoc agent analysis of workflow correctness
 
 ### Project Structure
 
-- [ ] **PS-01**: Source lives at src/workflow_engine/
-- [ ] **PS-02**: Pure Python -- no external frameworks (structlog is the one runtime dependency)
+- [x] **PS-01**: Source lives at src/workflow_engine/
+- [x] **PS-02**: Pure Python -- no external frameworks (structlog is the one runtime dependency)
 
 ## v2 Requirements
 
@@ -102,9 +102,9 @@ Requirements for v0.1 release. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SM-01 | Phase 1 | Pending |
-| SM-02 | Phase 1 | Pending |
-| SM-03 | Phase 1 | Pending |
+| SM-01 | Phase 1 | Complete |
+| SM-02 | Phase 1 | Complete |
+| SM-03 | Phase 1 | Complete |
 | SM-04 | Phase 2 | Pending |
 | SM-05 | Phase 2 | Pending |
 | SM-06 | Phase 2 | Pending |
@@ -112,9 +112,9 @@ Requirements for v0.1 release. Each maps to roadmap phases.
 | SM-08 | Phase 2 | Pending |
 | SM-09 | Phase 2 | Pending |
 | HP-01 | Phase 1 | Pending |
-| HP-02 | Phase 1 | Pending |
-| HP-03 | Phase 1 | Pending |
-| HP-04 | Phase 1 | Pending |
+| HP-02 | Phase 1 | Complete |
+| HP-03 | Phase 1 | Complete |
+| HP-04 | Phase 1 | Complete |
 | RB-01 | Phase 2 | Pending |
 | RB-02 | Phase 2 | Pending |
 | RB-03 | Phase 2 | Pending |
@@ -135,11 +135,11 @@ Requirements for v0.1 release. Each maps to roadmap phases.
 | ENG-02 | Phase 1 | Pending |
 | ENG-03 | Phase 1 | Pending |
 | ENG-04 | Phase 1 | Pending |
-| LOG-01 | Phase 1 | Pending |
+| LOG-01 | Phase 1 | Complete |
 | LOG-02 | Phase 1 | Pending |
 | LOG-03 | Phase 1 | Pending |
-| PS-01 | Phase 1 | Pending |
-| PS-02 | Phase 1 | Pending |
+| PS-01 | Phase 1 | Complete |
+| PS-02 | Phase 1 | Complete |
 
 **Coverage:**
 - v1 requirements: 38 total
