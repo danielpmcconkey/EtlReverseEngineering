@@ -1,12 +1,12 @@
-# ETL Reverse Engineering Orchestrator
+# POC6 Workflow Engine
 
 ## What This Is
 
-A deterministic C# CLI application that orchestrates the AI-driven reverse engineering of 105 ETL jobs from MockEtlFramework. The orchestrator contains zero LLM logic — it's a state machine that manages 6 worker threads, dispatches tasks to Claude CLI agents, and advances each job through a defined workflow based on structured agent responses. Agents produce Python artifacts targeting MockEtlFrameworkPython.
+A pure Python deterministic workflow engine that orchestrates the ETL reverse engineering pipeline for 105 jobs. The engine is a state machine — no LLM in the control loop. It drives each job through a defined waterfall (Plan → Define → Design → Build → Validate), dispatching atomic agents that claim a task, do one thing, and die. v0.1 validates the state machine mechanics with stubbed nodes and RNG outcomes before any real agents or infrastructure are connected.
 
 ## Core Value
 
-Every job completes its full pipeline — Plan → Define → Design → Build → Validate — with deterministic orchestration that cannot context-rot, cannot fabricate results, and cannot forget its constraints.
+The state machine correctly implements the transition table — rewinds, conditional loops, FBR gauntlet restarts, triage routing, and DEAD_LETTER on retry exhaustion all behave as designed.
 
 ## Requirements
 
@@ -20,67 +20,73 @@ Every job completes its full pipeline — Plan → Define → Design → Build �
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Deterministic C# orchestrator with 6 concurrent worker threads
-- [ ] Postgres-backed task queue with thread-safe claiming (SELECT ... FOR UPDATE SKIP LOCKED)
-- [ ] State machine workflow definition mapping (current_state, outcome) → next_state
-- [ ] Per-job isolation — no cross-job contamination
-- [ ] Skill registry — discrete C# functions encapsulating prompt template, allowed tools, output schema, model tier, budget cap
-- [ ] Agent invocation via `claude -p` with fresh context per task
-- [ ] Full per-job waterfall pipeline: Plan → Define → Design → Build → Validate
-- [ ] Review/response cycles with severity classification (cosmetic vs substantive)
-- [ ] Cosmetic review failures trigger targeted fix-up tasks
-- [ ] Substantive review failures rewind to the Write step for that artifact
-- [ ] Circuit breakers as guard conditions on state transitions (max retry limits per stage)
-- [ ] Structured agent responses (JSON) parsed by the orchestrator
-- [ ] Proofmark integration for OG vs RE output validation
-- [ ] All 105 jobs processed through the pipeline
+- [ ] Deterministic state machine with 27 happy-path nodes matching the transition table
+- [ ] Three-outcome review model: Approve / Conditional (3 max) / Fail at every review node
+- [ ] 4th Conditional auto-promotes to Fail
+- [ ] Fail rewinds to the original write node and replays the full pipeline forward
+- [ ] Conditional routes to response node → same reviewer, no downstream invalidation
+- [ ] FinalBuildReview gauntlet: 6 serial gates, any failure restarts from FBR_BrdCheck
+- [ ] FBR depth cap prevents infinite gauntlet loops
+- [ ] 7-step proofmark triage sub-pipeline (T1-T7)
+- [ ] Triage routing: earliest fault wins, no faults → DEAD_LETTER
+- [ ] Triage retry counter with its own exhaustion → DEAD_LETTER
+- [ ] Per-node retry limits with exhaustion → DEAD_LETTER
+- [ ] Stubbed nodes: review nodes return RNG Approve/Conditional/Fail, non-review return RNG Success/Failure
+- [ ] Logging: job ID, node name, outcome, retry counts, transitions (structured enough for post-hoc agent analysis)
+- [ ] Run N jobs through full pipeline to exercise all paths
+- [ ] Writer/response nodes receive only the most recent rejection reason — no errata accumulation
+- [ ] Source lives at `src/workflow_engine/`
 
 ### Out of Scope
 
-- LLM-based orchestration — the whole point is deterministic control
-- Cross-job dependencies or shared state between pipelines
-- Real-time UI or dashboard — CLI output and DB state are sufficient
-- Worker prioritization logic — pure FIFO from the queue
-- F# — immutable-first doesn't play nice with concurrent mutable state
+- Postgres task queue — v0.1 uses in-memory job state
+- Claude CLI agent invocation — stubs only
+- Real agent blueprints — stubs have comments describing future behavior
+- Parallelism / concurrency — single-threaded sequential for v0.1
+- Proofmark integration — triage sub-pipeline is stubbed
+- MockEtlFrameworkPython integration — no real artifact production
+- Automated assertions — logs are the validation artifact, agents analyze post-hoc
 
 ## Context
 
-**POC5 lesson:** An LLM-based orchestrator (GSD executor) suffered context rot. As conversations grew, the orchestrator lost constraints and fabricated results — copying OG output to fake RE output, writing plausible summaries for unperformed work. This drove the core design decision: the orchestrator must be dumb. All intelligence lives in agents with fresh context per invocation.
+**POC5 failure:** An LLM-based orchestrator (GSD executor) suffered context rot. As conversations grew, the orchestrator lost constraints and fabricated results — copying OG output to fake RE output, writing plausible summaries for unperformed work. This drove the core design decision: the orchestrator must be dumb. All intelligence lives in agents with fresh context per invocation.
 
-**Polyglot reality:** C# orchestrator, Python target artifacts. MockEtlFrameworkPython supports dynamic class loading, eliminating the compile-rebuild human-in-the-middle bottleneck from POC5.
+**The flip:** POC5 ran 1 waterfall to RE 105 jobs (vertical). POC6 runs 105 waterfalls to RE 1 job each (horizontal). Each job gets its own full lifecycle pipeline. No job's failure contaminates another.
 
-**Infrastructure:**
-- Postgres task queue in existing `control` schema (host: 172.18.0.1, port: 5432)
-- Claude CLI for agent invocation
-- MockEtlFramework (C#) — OG source to reverse engineer
-- MockEtlFrameworkPython — target for RE'd artifacts
-- proofmark — comparison engine for validation
+**Infrastructure context (not used in v0.1 but informs design):**
+- Postgres task queue at 172.18.0.1:5432 (control schema)
+- Claude CLI for agent invocation (`claude -p` with per-agent blueprints)
+- MockEtlFramework (C# OG) at `/workspace/MockEtlFramework/`
+- MockEtlFrameworkPython (RE target) at `/workspace/MockEtlFrameworkPython/`
+- OG output (answer key): `/workspace/og-curated/` (read-only)
+- RE output: `/workspace/re-curated/` (read-only, framework writes here)
 
-**Per-job waterfall pipeline:**
-Plan (locate sources, inventory outputs/data sources, note dependencies) → Define (write/review BRD) → Design (write/review BDD, write/review FSD) → Build (build/review artifacts, build/review proofmark config, build/review/execute unit tests, publish, final build review) → Validate (execute job runs, execute proofmark, triage failures, final sign-off)
-
-**Re-review cascade logic:** Final build review can trigger re-reviews of BRD/BDD/FSD. Re-review agents return severity (cosmetic/substantive). Cosmetic → fix-up task. Substantive → rewind to Write step for that artifact, cascading downstream steps back into the queue.
+**Design documents:**
+- Transition table: `/workspace/AtcStrategy/POC6/BDsNotes/state-machine-transitions.md`
+- Agent taxonomy: `/workspace/AtcStrategy/POC6/BDsNotes/agent-taxonomy.md`
+- Architecture: `/workspace/AtcStrategy/POC6/BDsNotes/poc6-architecture.md`
+- State overview: `/workspace/AtcStrategy/POC6/BDsNotes/state-of-poc6.md`
 
 ## Constraints
 
-- **Tech stack**: C# orchestrator, Python artifacts — no negotiation
-- **Concurrency**: 6 worker threads max (CPU/RAM/token budget)
-- **Agent model**: Claude CLI subprocess per task, fresh context, no state carried
-- **Database**: Existing Postgres instance, `control` schema
-- **Hardware**: GTX 1080 (8GB VRAM), running in Docker container
+- **Language**: Pure Python — no external frameworks for the engine itself
+- **No LLM in control loop**: The orchestrator is deterministic. Period.
+- **No errata**: Writer gets only the most recent rejection reason. Retry counter is the only memory.
+- **Fresh context**: Every agent invocation starts clean. No state carried between invocations.
+- **v0.1 boundary**: Stubs + RNG only. No real infrastructure, no real agents, no real cost.
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Deterministic C# orchestrator, not LLM | POC5 context rot proved LLM orchestrators fabricate results | — Pending |
-| BDD before FSD | Tests drive the spec, not the other way around | — Pending |
-| All agents cite evidence | No unsupported claims — BRD#, BDD scenario#, code refs required | — Pending |
-| Review Response agents separate from Write agents | Atomicity — reviewer shouldn't also be the author | — Pending |
-| Severity-based re-review cascade | Cosmetic failures get fix-ups, substantive failures rewind to Write step | — Pending |
-| 6 concurrent workers | CPU/RAM/token budget constraint | — Pending |
-| Pure FIFO queue | No prioritization logic — simplicity over cleverness | — Pending |
-| Publish and Locate OG may be deterministic | Some steps might not need LLM agents at all | — Pending |
+| Dumb orchestrator, no LLM | POC5 context rot proved LLM orchestrators fabricate results | — Pending |
+| Three-outcome review (Approve/Conditional/Fail) | Conditional = targeted fix, Fail = full rewrite. Granularity prevents over-punishment | — Pending |
+| 4th Conditional → auto-Fail | Prevents infinite conditional loops while giving 3 honest chances | — Pending |
+| FBR restarts from top of gauntlet | Downstream fix could invalidate upstream pass | — Pending |
+| Triage routes to earliest fault | Higher faults cascade further; fix the root first | — Pending |
+| No errata accumulation | Keep agents dumb. Let retry limits handle persistent failures | — Pending |
+| Logs as validation artifact | Human reads logs or background agents analyze post-hoc. No automated assertions in v0.1 | — Pending |
+| In-memory job state for v0.1 | Postgres comes later. Validate mechanics first, infrastructure second | — Pending |
 
 ---
-*Last updated: 2026-03-10 after initialization*
+*Last updated: 2026-03-13 after initialization*
