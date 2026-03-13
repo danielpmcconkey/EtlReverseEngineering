@@ -1,8 +1,8 @@
-# Roadmap: ETL Reverse Engineering Orchestrator
+# Roadmap: POC6 Workflow Engine
 
 ## Overview
 
-Build a deterministic C# CLI orchestrator bottom-up: database task queue first (the single source of truth), then the state machine that defines workflow transitions, then the worker pool that runs the loops, then agent integration that adds real Claude CLI intelligence, then the rewind cascade logic that handles review failures, and finally the production run of all 105 jobs. Each layer is independently testable before the next begins. Deterministic before non-deterministic, cheap before expensive.
+Three phases that build a deterministic workflow engine from the ground up. Phase 1 gets a running engine with happy-path-only routing, stubs, and structured logging -- proving the loop works before adding branching. Phase 2 adds the core complexity: three-outcome review branching, fail-rewind with replay-forward, conditional counters with auto-promotion, and counter reset semantics. Phase 3 layers the two advanced sub-systems (FBR gauntlet and triage pipeline) on top of the review branching mechanics, then runs N jobs to exercise all paths.
 
 ## Phases
 
@@ -12,115 +12,68 @@ Build a deterministic C# CLI orchestrator bottom-up: database task queue first (
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Database Foundation** - Postgres task queue with thread-safe claiming, crash recovery, and dead letter support
-- [ ] **Phase 2: State Machine and Pipeline Definition** - Deterministic transition table and full waterfall pipeline skeleton
-- [ ] **Phase 3: Worker Infrastructure** - 6-thread worker pool with graceful shutdown and structured logging
-- [ ] **Phase 4: Agent Integration** - Claude CLI subprocess invocation with structured JSON parsing and blueprint system
-- [ ] **Phase 5: Rewind Cascade and Review Logic** - Severity-classified reviews with cosmetic fix-ups and substantive rewrites
-- [ ] **Phase 6: Production Pipeline** - All 105 jobs seeded and processed through the complete pipeline
+- [ ] **Phase 1: Foundation and Happy Path Engine** - State model, transition table, stubs, engine loop, happy-path routing, and structured logging
+- [ ] **Phase 2: Review Branching and Counter Mechanics** - Three-outcome review dispatch, fail-rewind, conditional counters, response nodes, and DEAD_LETTER on retry exhaustion
+- [ ] **Phase 3: FBR Gauntlet, Triage, and Validation Run** - FBR 6-gate gauntlet with restart semantics, triage sub-pipeline with earliest-fault routing, and full N-job validation run
 
 ## Phase Details
 
-### Phase 1: Database Foundation
-**Goal**: The orchestrator has a durable, thread-safe task queue that survives crashes and prevents double-processing
+### Phase 1: Foundation and Happy Path Engine
+**Goal**: A running engine that drives jobs through 27 happy-path nodes with stubbed outcomes and structured logging
 **Depends on**: Nothing (first phase)
-**Requirements**: QUEUE-01, QUEUE-02, QUEUE-03, QUEUE-04, QUEUE-05
+**Requirements**: SM-01, SM-02, SM-03, HP-01, HP-02, HP-03, HP-04, ENG-01, ENG-02, ENG-03, ENG-04, LOG-01, LOG-02, LOG-03, PS-01, PS-02
 **Success Criteria** (what must be TRUE):
-  1. Multiple threads can claim tasks concurrently without any thread receiving another thread's task
-  2. Killing the process mid-run and restarting it results in orphaned tasks being reclaimed and reprocessed
-  3. A task that has been claimed, processed, and completed cannot be claimed again
-  4. Tasks that exceed retry limits appear in a dead letter state queryable via SQL
-  5. Re-running a reclaimed task produces the same end state as a fresh run (idempotent writes)
+  1. A job can traverse all 27 happy-path nodes from LocateOgSourceFiles through FinalSignOff to COMPLETE when all stubs return success/approve
+  2. Transition table is a declarative data structure (dict-based) that can be inspected without reading procedural code
+  3. Every node transition is logged as structured JSON with job ID, node name, outcome, and counter values
+  4. N and M retry limits are configurable and default to sensible values
+  5. Running N jobs sequentially produces distinct per-job logs with no state bleed between jobs
 **Plans**: TBD
 
 Plans:
 - [ ] 01-01: TBD
 - [ ] 01-02: TBD
 
-### Phase 2: State Machine and Pipeline Definition
-**Goal**: The orchestrator can determine the next step for any job given its current state and the outcome of its last task
+### Phase 2: Review Branching and Counter Mechanics
+**Goal**: The engine correctly handles all three review outcomes -- approve advances, conditional routes to response node and back, fail rewinds to origin write node and replays forward -- with counter semantics that prevent infinite loops
 **Depends on**: Phase 1
-**Requirements**: SM-01, SM-02, PIPE-01, PIPE-02, PIPE-03, PIPE-04, PIPE-05, PIPE-06, PIPE-07
+**Requirements**: SM-04, SM-05, SM-06, SM-07, SM-08, SM-09, RB-01, RB-02, RB-03, RB-04, RB-05
 **Success Criteria** (what must be TRUE):
-  1. Given any (current_state, outcome) pair, the transition table returns exactly one deterministic next state (or set of next states for fan-out)
-  2. A job can be queried for its current position in the waterfall pipeline (which stage, which step)
-  3. Every leaf node in the pipeline taxonomy (LocateOgSourceFiles, WriteBrd, ReviewBdd, etc.) has a discrete C# method that can be invoked
-  4. Circuit breakers prevent a job from retrying the same stage more than the configured maximum
-  5. A job that starts at Plan and receives Success outcomes at every step reaches FinalSignOff
+  1. A Conditional outcome at a review node routes to the correct response node, then back to the same reviewer, without invalidating downstream work
+  2. A Fail outcome at a review node rewinds to the original write node and replays the full pipeline forward from there
+  3. The Mth consecutive Conditional at the same review node auto-promotes to Fail (incrementing the main retry counter and rewinding)
+  4. A job reaching N total Fails is sent to DEAD_LETTER instead of rewinding again
+  5. Per-node conditional counters reset to 0 on success at that node AND on rewind past that node
 **Plans**: TBD
 
 Plans:
 - [ ] 02-01: TBD
 - [ ] 02-02: TBD
 
-### Phase 3: Worker Infrastructure
-**Goal**: The orchestrator runs 6 concurrent workers that claim tasks, execute them, and advance job state in a continuous loop
+### Phase 3: FBR Gauntlet, Triage, and Validation Run
+**Goal**: The FBR 6-gate gauntlet and 7-step triage sub-pipeline both work correctly, and a batch of N jobs with RNG outcomes exercises all major transition paths
 **Depends on**: Phase 2
-**Requirements**: WORK-01, WORK-02, WORK-03, WORK-04
+**Requirements**: FBR-01, FBR-02, FBR-03, FBR-04, TR-01, TR-02, TR-03, TR-04, TR-05, TR-06, TR-07
 **Success Criteria** (what must be TRUE):
-  1. 6 worker threads run concurrently, each independently claiming and processing tasks from the queue
-  2. Pressing Ctrl+C causes all workers to finish their current task, update DB state, and exit cleanly (no orphaned tasks)
-  3. Log files contain structured entries with job ID, step name, worker ID, current state, and attempt count
-  4. Running with --dry-run flag exercises the full orchestration loop (claim, transition, advance) without spawning any Claude CLI subprocesses
+  1. All 6 FBR gates execute in serial after Publish; any gate failure restarts the gauntlet from FBR_BrdCheck (not from the failed gate)
+  2. FBR Conditional routes to response node, then review, then back to FBR_BrdCheck (not to the next gate)
+  3. FBR Fail rewinds to original write node and replays forward, naturally arriving back at FBR_BrdCheck through the pipeline
+  4. Triage sub-pipeline enters on ExecuteProofmark failure, runs T1-T7, and routes to the earliest fault found
+  5. Running 100+ jobs with RNG outcomes produces logs showing rewinds, conditional loops, FBR restarts, triage routing, and DEAD_LETTER exhaustion all occurred
 **Plans**: TBD
 
 Plans:
 - [ ] 03-01: TBD
 - [ ] 03-02: TBD
-
-### Phase 4: Agent Integration
-**Goal**: Workers invoke real Claude CLI agents per task, with fresh context isolation, structured responses, and blueprint-driven prompts
-**Depends on**: Phase 3
-**Requirements**: AGENT-01, AGENT-02, AGENT-03, AGENT-04
-**Success Criteria** (what must be TRUE):
-  1. Each task spawns a fresh `claude -p` subprocess with no state carried from previous invocations
-  2. Agent JSON responses are parsed into typed C# objects, with non-JSON preamble/stderr stripped without failure
-  3. Each agent type loads its constraints from a dedicated blueprint.md file used as the system prompt
-  4. A subprocess that hangs beyond its timeout is killed and the task transitions to a failure state with appropriate retry logic
-**Plans**: TBD
-
-Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
-
-### Phase 5: Rewind Cascade and Review Logic
-**Goal**: Review agents classify failures by severity, triggering targeted fix-ups or full rewrites with cascade depth protection
-**Depends on**: Phase 4
-**Requirements**: SM-03, SM-04, SM-05, SM-06
-**Success Criteria** (what must be TRUE):
-  1. Review agents return structured severity classification (cosmetic vs substantive) in their JSON response
-  2. A cosmetic review failure enqueues a targeted fix-up task that addresses only the flagged issues without rewriting the full artifact
-  3. A substantive review failure rewinds the job to the Write step for that artifact, re-queuing all downstream steps
-  4. Rewind cascades triggered by final build review cannot loop more than the configured depth cap
-**Plans**: TBD
-
-Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
-
-### Phase 6: Production Pipeline
-**Goal**: All 105 ETL jobs are seeded and processed through the complete pipeline with zero cross-job contamination
-**Depends on**: Phase 5
-**Requirements**: PIPE-08
-**Success Criteria** (what must be TRUE):
-  1. All 105 jobs are seeded into the task queue with their initial Plan-stage tasks
-  2. Jobs process concurrently without any job's artifacts, state, or context contaminating another job
-  3. Jobs that complete the full pipeline reach FinalSignOff status with all artifacts produced
-**Plans**: TBD
-
-Plans:
-- [ ] 06-01: TBD
+- [ ] 03-03: TBD
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
+Phases execute in numeric order: 1 -> 2 -> 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Database Foundation | 0/? | Not started | - |
-| 2. State Machine and Pipeline Definition | 0/? | Not started | - |
-| 3. Worker Infrastructure | 0/? | Not started | - |
-| 4. Agent Integration | 0/? | Not started | - |
-| 5. Rewind Cascade and Review Logic | 0/? | Not started | - |
-| 6. Production Pipeline | 0/? | Not started | - |
+| 1. Foundation and Happy Path Engine | 0/2 | Not started | - |
+| 2. Review Branching and Counter Mechanics | 0/2 | Not started | - |
+| 3. FBR Gauntlet, Triage, and Validation Run | 0/3 | Not started | - |
