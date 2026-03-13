@@ -28,11 +28,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Every node transition is logged as structured JSON with job ID, node name, outcome, and counter values
   4. N and M retry limits are configurable and default to sensible values
   5. Running N jobs sequentially produces distinct per-job logs with no state bleed between jobs
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md — Data layer: project scaffolding, models, transition table, node stubs, structlog config
+- [ ] 01-02-PLAN.md — Engine: main loop, CLI entry point, integration tests, end-to-end smoke test
 
 ### Phase 2: Review Branching and Counter Mechanics
 **Goal**: The engine correctly handles all three review outcomes -- approve advances, conditional routes to response node and back, fail rewinds to origin write node and replays forward -- with counter semantics that prevent infinite loops
