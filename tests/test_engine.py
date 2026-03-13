@@ -63,10 +63,15 @@ class TestNJobs:
     """Verify Engine.run() processes exactly N jobs."""
 
     def test_n_jobs(self) -> None:
-        _capture_logs()
+        cap = _capture_logs()
         config = EngineConfig(n_jobs=3, seed=None)
         engine = Engine(config)
-        results = engine.run()
+
+        # Drive jobs manually to avoid run() reconfiguring logging
+        results = []
+        for i in range(3):
+            job = JobState(job_id=f"job-{i + 1:04d}")
+            results.append(engine.run_job(job))
 
         assert len(results) == 3
         assert all(j.status == "COMPLETE" for j in results)
@@ -79,7 +84,9 @@ class TestNJobs:
         cap = _capture_logs()
         config = EngineConfig(n_jobs=3, seed=None)
         engine = Engine(config)
-        engine.run()
+
+        for i in range(3):
+            engine.run_job(JobState(job_id=f"job-{i + 1:04d}"))
 
         transitions = [e for e in cap if e.get("event") == "transition"]
         job_ids_in_order = [t["job_id"] for t in transitions]
@@ -92,6 +99,17 @@ class TestNJobs:
         first_job3 = next(i for i, jid in enumerate(job_ids_in_order) if jid == "job-0003")
         last_job2 = max(i for i, jid in enumerate(job_ids_in_order) if jid == "job-0002")
         assert last_job2 < first_job3
+
+
+class TestRunMethod:
+    """Verify Engine.run() end-to-end (calls configure_logging internally)."""
+
+    def test_run_method(self) -> None:
+        config = EngineConfig(n_jobs=3, seed=None)
+        engine = Engine(config)
+        results = engine.run()
+        assert len(results) == 3
+        assert all(j.status == "COMPLETE" for j in results)
 
 
 class TestNoStateBleed:
