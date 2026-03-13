@@ -9,7 +9,7 @@ import random
 from abc import ABC, abstractmethod
 
 from workflow_engine.models import JobState, NodeType, Outcome
-from workflow_engine.transitions import HAPPY_PATH, NODE_TYPES, TRIAGE_NODES
+from workflow_engine.transitions import FBR_ROUTING, HAPPY_PATH, NODE_TYPES, REVIEW_ROUTING, TRIAGE_NODES
 
 
 class Node(ABC):
@@ -136,13 +136,23 @@ def create_node_registry(rng: random.Random | None = None) -> dict[str, Node]:
     Response nodes are always StubWorkNode (they write/build, never review).
     When rng is None, all stubs run deterministically (happy path).
     """
+    # WORK nodes that have FAILURE edges (can meaningfully fail with RNG).
+    _FAILABLE_WORK_NODES = {"ExecuteProofmark"} | set(_RESPONSE_NODE_DESCRIPTIONS)
+    # REVIEW nodes that have CONDITIONAL/FAIL edges (can meaningfully fail with RNG).
+    # FinalSignOff is a review node but has no failure edges -- always deterministic.
+    _FAILABLE_REVIEW_NODES = set(REVIEW_ROUTING) | set(FBR_ROUTING)
+
     registry: dict[str, Node] = {}
     for node_name in HAPPY_PATH:
         description = _NODE_DESCRIPTIONS[node_name]
-        if NODE_TYPES[node_name] == NodeType.REVIEW:
+        if NODE_TYPES[node_name] == NodeType.REVIEW and node_name in _FAILABLE_REVIEW_NODES:
             registry[node_name] = StubReviewNode(node_name, description, rng=rng)
-        else:
+        elif NODE_TYPES[node_name] == NodeType.REVIEW:
+            registry[node_name] = StubReviewNode(node_name, description)
+        elif node_name in _FAILABLE_WORK_NODES:
             registry[node_name] = StubWorkNode(node_name, description, rng=rng)
+        else:
+            registry[node_name] = StubWorkNode(node_name, description)
     for node_name, description in _RESPONSE_NODE_DESCRIPTIONS.items():
         registry[node_name] = StubWorkNode(node_name, description, rng=rng)
 

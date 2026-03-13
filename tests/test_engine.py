@@ -609,3 +609,54 @@ class TestTriage:
 
         # Deterministic T3-T6 -> all clean -> T7 routes to DEAD_LETTER
         assert result.status == "DEAD_LETTER"
+
+
+class TestValidationRun:
+    """Smoke test: 200 jobs with RNG, verify all major paths exercised."""
+
+    def test_validation_run_exercises_all_paths(self) -> None:
+        cap = _capture_logs()
+        config = EngineConfig(
+            n_jobs=200,
+            max_main_retries=50,
+            max_conditional_per_node=3,
+            seed=42,
+        )
+        engine = Engine(config)
+
+        results = []
+        for i in range(config.n_jobs):
+            job = JobState(job_id=f"val-{i + 1:04d}")
+            results.append(engine.run_job(job))
+
+        transitions = [e for e in cap if e.get("event") == "transition"]
+        dead_letters = [e for e in cap if e.get("event") == "dead_letter"]
+
+        # 1. At least one CONDITIONAL loop
+        conditionals = [t for t in transitions if t["outcome"] == "CONDITIONAL"]
+        assert len(conditionals) > 0, "No CONDITIONAL loops observed"
+
+        # 2. At least one FAIL rewind
+        fails = [t for t in transitions if t["outcome"] == "FAIL"]
+        assert len(fails) > 0, "No FAIL rewinds observed"
+
+        # 3. At least one DEAD_LETTER
+        assert len(dead_letters) > 0, "No DEAD_LETTER observed"
+
+        # 4. At least one FBR gauntlet restart (APPROVE at review node -> FBR_BrdCheck)
+        fbr_restarts = [
+            t for t in transitions
+            if t["outcome"] == "APPROVE"
+            and t["next_node"] == "FBR_BrdCheck"
+            and t["node"] in REVIEW_ROUTING
+        ]
+        assert len(fbr_restarts) > 0, "No FBR gauntlet restarts observed"
+
+        # 5. At least one TRIAGE_ROUTE
+        triage_routes = [t for t in transitions if t["outcome"] == "TRIAGE_ROUTE"]
+        assert len(triage_routes) > 0, "No TRIAGE_ROUTE observed"
+
+        # At least 1 COMPLETE and 1 DEAD_LETTER
+        statuses = {r.status for r in results}
+        assert "COMPLETE" in statuses, "No job reached COMPLETE"
+        assert "DEAD_LETTER" in statuses, "No job reached DEAD_LETTER"
