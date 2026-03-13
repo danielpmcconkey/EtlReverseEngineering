@@ -1,211 +1,189 @@
 # Project Research Summary
 
-**Project:** ETL Reverse Engineering Orchestrator
-**Domain:** Deterministic task orchestrator for AI-agent-driven ETL reverse engineering pipelines
-**Researched:** 2026-03-10
+**Project:** POC6 Workflow Engine
+**Domain:** Deterministic state-machine workflow engine for ETL reverse engineering pipeline
+**Researched:** 2026-03-13
 **Confidence:** HIGH
 
 ## Executive Summary
 
-This project is a deterministic CLI orchestrator that drives 105 ETL reverse-engineering jobs through a waterfall pipeline (Plan, Define, Design, Build, Validate) using Claude CLI subprocesses as the execution engine. The core design insight -- and the entire reason this exists -- is that the orchestrator must be dumb. Intelligence lives in ephemeral agent subprocesses with zero retained state. The orchestrator is a state machine lookup table backed by a Postgres task queue. Experts build systems like this using the `SELECT ... FOR UPDATE SKIP LOCKED` pattern for work claiming, fixed worker pools for bounded concurrency, and subprocess isolation to prevent the context rot that killed POC5.
+POC6 is a custom deterministic workflow engine that orchestrates 27+ pipeline nodes through a fully specified transition table. The engine's job is to be dumb on purpose -- a rigid state machine that routes jobs through write, review, and validation steps using outcome-based transitions, while agents (stubbed with RNG in v0.1) do the actual thinking. This is a direct reaction to POC5 where LLM-based routing decisions caused context rot. The entire design philosophy is: the orchestrator never decides, it only dispatches.
 
-The recommended approach is a five-layer .NET 8 / C# 12 application: CLI entry point, orchestrator loop, worker pool (6 threads), task queue (Postgres), and agent dispatcher (Claude CLI via CliWrap). The stack is deliberately lean -- Npgsql for database access (no ORM), a plain Dictionary for the state machine transition table (no framework), System.Threading.Channels for producer-consumer dispatch, and CliWrap for subprocess management. Every technology choice optimizes for simplicity and debuggability over abstraction.
+The recommended approach is to roll a pure-Python state machine with zero framework dependencies. Every state machine library evaluated (pytransitions, python-statemachine) solves the easy part (declaring states) while adding nothing for the hard parts: fail-rewind with replay-forward, FBR gauntlet restart-from-top semantics, conditional-counter auto-promotion to fail, and triage sub-pipeline routing with earliest-fault-wins logic. The total engine code is estimated at 500-800 lines of Python. structlog is the only external runtime dependency.
 
-The primary risks are: (1) Claude CLI output parsing failures corrupting the task pipeline, (2) zombie Claude subprocesses accumulating and degrading worker capacity, (3) database lock holding during long agent invocations causing resource exhaustion, and (4) rewind cascade loops where writer and reviewer agents produce irreconcilable output. All four have well-documented prevention strategies. The system's crash resilience comes from Postgres being the single source of truth -- if the process dies, restart it and workers resume from where they left off.
+The critical risks cluster around counter management and rewind semantics. The engine has four distinct counter families (per-node retry, per-review conditional, FBR depth, triage retry), each with different scope and reset rules. Getting counter resets wrong on rewind creates either infinite loops or unfairly punished jobs. The FBR gauntlet's combinatorial path explosion is the second major risk -- depth cap must stay low (2-3) and automated path coverage is essential. Both risks are addressable through careful state model design in Phase 1 and scenario-trace testing throughout.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The stack is .NET 8 LTS with minimal external dependencies. The philosophy: if it ships with the runtime, use it. Only pull in packages that solve genuinely hard problems (subprocess pipe deadlocks, structured logging enrichment, state machine edge cases).
+Pure Python 3.12 with stdlib dataclasses, enums, and typing. Zero runtime framework dependencies. structlog is the single external dependency for structured JSON logging (explicitly needed for post-hoc agent analysis). Dev tooling: pytest + pytest-cov for testing, ruff for linting/formatting, mypy for static type checking.
 
 **Core technologies:**
-- **.NET 8.0 / C# 12**: Already installed in container, LTS through Nov 2026. No .NET 10 features needed for a CLI orchestrator.
-- **Npgsql 8.0.x**: Direct PostgreSQL driver. No ORM -- this is a task queue, not a CRUD app. Raw SQL with locking primitives.
-- **CliWrap 3.10.0**: Subprocess management for `claude -p`. Solves the stdout/stderr deadlock problem that raw Process.Start is notorious for.
-- **Serilog 4.3.1**: Structured logging with per-job context enrichment (job ID, stage, worker ID on every log entry).
-- **System.Threading.Channels**: Built-in producer-consumer dispatch. Bounded channel with capacity 6 provides natural backpressure.
-- **System.Text.Json**: Built-in JSON parsing. Agent responses deserialize into strongly-typed C# records.
-- **System.CommandLine 2.0.0-beta**: CLI argument parsing. Still beta but stable enough, gives `--help` for free.
+- **Python 3.12 + stdlib (dataclasses, enum, typing):** Engine runtime -- zero-dep, full typing support, already in container
+- **structlog 25.5.0:** Structured logging -- JSON-native output for machine-parseable transition logs
+- **pytest 8.x + pytest-cov:** Testing -- path coverage verification is critical for validating all transition edges
+- **ruff + mypy:** Code quality -- the transition table has enough branching that type errors would be painful to debug at runtime
 
-**Notable research conflict -- Stateless library:**
-STACK.md recommends the Stateless NuGet package (5.20.1) for the state machine. ARCHITECTURE.md explicitly argues against it, recommending a plain `Dictionary<(string, string), string[]>` instead. The architecture researcher's argument is stronger: this workflow is a static lookup table, not a runtime-configurable state machine. Stateless adds ceremony and indirection for features (hierarchical states, parameterized triggers, entry/exit actions) that this project doesn't need. **Recommendation: use the dictionary approach.** It's more testable, more inspectable, and more obvious. Drop Stateless from the dependency list.
-
-See: `.planning/research/STACK.md`
+**Explicitly rejected:** pytransitions (callback model doesn't help with rewind/retry), python-statemachine (statechart features irrelevant), Pydantic (no untrusted input to validate), any ORM (v0.1 is in-memory), Temporal/Prefect/Airflow (distributed orchestrators, wrong abstraction level entirely).
 
 ### Expected Features
 
-**Must have (table stakes):**
-- Postgres-backed task queue with SKIP LOCKED claiming
-- State machine with explicit, deterministic transition table
-- Concurrent worker pool (6 threads, bounded)
-- Per-task agent isolation (fresh subprocess, zero context carryover)
-- Structured JSON agent responses with schema validation
-- Circuit breakers (max retry per stage per artifact)
-- Task state persistence and crash recovery
-- Idempotent task execution (overwrite, not append)
-- Graceful shutdown with CancellationToken propagation
-- Per-task logging (agent stdout/stderr to files)
-- Skill registry (prompt template, model tier, budget cap, timeout per task type)
-- Waterfall pipeline definition with stage handoffs
-- Review/response cycle with cosmetic vs. substantive severity classification
+**Must have (table stakes -- engine is broken without these):**
+- Transition table as declarative data structure (foundation everything routes through)
+- Three-outcome review dispatch (Approve/Conditional/Fail)
+- Conditional counter with auto-promote to Fail on 4th occurrence
+- Fail-rewind to origin write node with replay-forward (hardest single mechanic)
+- FBR gauntlet with restart-from-top and depth cap
+- Per-node retry limits with DEAD_LETTER exhaustion
+- Triage sub-pipeline (T1-T7) with earliest-fault routing
+- Response nodes with most-recent-rejection-only (no errata accumulation)
+- Structured transition logging (primary validation artifact)
+- Job isolation with sequential execution
 
-**Should have (differentiators):**
-- Dead letter queue for permanently failed tasks
-- Job-level progress tracking (CLI status queries)
-- Token/cost tracking per task invocation
-- Artifact versioning (keep previous versions on rewind)
-- Startup state reconciliation (reclaim orphaned tasks)
-- Dry-run mode (validate pipeline without invoking agents)
-- Configurable model tier per skill (Opus for complex, Sonnet for rote)
-- Pause/resume per job
-- Deterministic-only skill type (no agent needed for some steps)
-- Heartbeat/liveness monitoring for long-running tasks
+**Should have (v0.2, after validation):**
+- Transition table validation at startup (catch config bugs before runtime)
+- Path coverage reporting (confirm all edges exercised)
+- Configurable RNG outcome weights (maximize coverage with tuned profiles)
+- Replayable execution logs (debug specific paths deterministically)
+- Event hooks/callbacks (prepare for Postgres integration)
 
-**Defer indefinitely:**
-- Web dashboard / real-time UI
-- Priority queue / weighted scheduling (FIFO is correct)
-- Cross-job dependency graph (jobs are independent)
-- Dynamic agent chaining / LLM-decided routing (the POC5 anti-pattern)
-- Distributed workers across machines
-- Event-driven / pub-sub architecture
-- Plugin / extension system
+**Defer (v1.0+):**
+- Postgres task queue, parallel execution, checkpointing, batch statistics
 
-See: `.planning/research/FEATURES.md`
+**Anti-features (explicitly do NOT build):**
+- Generic workflow DSL/YAML config, LLM-based routing, exponential backoff, parallel execution in v0.1, compensation/saga patterns, errata accumulation, plugin architecture, web UI, database persistence in v0.1
 
 ### Architecture Approach
 
-Five-layer architecture with strict component boundaries: CLI entry point, orchestrator loop (main thread), worker pool (6 dedicated threads), state machine engine (pure lookup table), and agent dispatcher (subprocess spawner). The critical constraint is that no layer skips another. Workers are identical drones running Claim-Execute-Advance loops. All state lives in Postgres. All intelligence lives in ephemeral agent subprocesses. The orchestrator carries no mutable in-memory state between iterations.
+Four-component architecture: Engine (main loop), Transition Resolver (centralized routing logic), Node Registry (state-name-to-executable mapping), and Job State (per-job mutable state bag). The Transition Resolver is the heart -- all branching logic (happy path, conditional routing, fail rewind, FBR restart, triage routing, retry exhaustion) lives in one class with declarative data structures. Nodes are deliberately dumb: execute and return an Outcome enum. They know nothing about transitions, counters, or other nodes.
 
 **Major components:**
-1. **Task Queue (Postgres)** -- Durable task storage with atomic claiming via SKIP LOCKED. Three tables: tasks, circuit_breakers, job_state.
-2. **State Machine Engine** -- Dictionary-based transition table mapping (task_type, outcome) to next_task_type[]. Pure function, no side effects, thread-safe by construction.
-3. **Worker Pool** -- 6 dedicated threads (not async Task.Run) running identical work loops. Each worker owns its own NpgsqlConnection.
-4. **Agent Dispatcher** -- Thin wrapper around CliWrap that assembles prompts from skill templates, spawns `claude -p`, captures output, parses JSON.
-5. **Skill Registry** -- Immutable dictionary loaded at startup mapping task types to prompt templates, allowed tools, output schemas, model tiers, budget caps, and timeouts.
+1. **Engine** -- Main loop driving the execute-resolve-transition cycle per job
+2. **Transition Resolver** -- Centralized transition table + all counter/rewind/routing logic
+3. **Node Registry + Node hierarchy** -- Maps state names to executable nodes (WorkNode, ReviewNode, TriageNode, TriageRouterNode)
+4. **Job State** -- Per-job mutable state: current node, retry counts, conditional counts, FBR depth, triage context, last rejection reason
+5. **Logger** -- Structured log of every transition with full counter state
 
-**Key architectural decision -- dedicated threads over async:** Workers block on Claude CLI subprocesses for 30-120+ seconds. Using async/await with blocking subprocess calls would starve the .NET thread pool. Dedicated Thread instances make the concurrency model explicit and avoid thread pool starvation.
-
-See: `.planning/research/ARCHITECTURE.md`
+**Key patterns:** Outcome-driven dispatch (not event-triggered), centralized transition table (not distributed routing), counter state on the job (not on nodes), rewind = set current_node + clear downstream counters (no stack-based undo), explicit FBR context flag (not implicit call-stack inspection).
 
 ### Critical Pitfalls
 
-1. **Claude CLI output is not reliably JSON** -- Even with `--output-format json`, expect preamble, Unicode corruption, and stderr contamination. Build a resilient parser that strips non-JSON content, separates stderr, and treats parse failure as a distinct outcome type with its own retry path. Must be solved in the first phase.
+1. **Counter scope confusion** -- Four counter families with different reset rules. A rewind must reset downstream conditional/retry counters but not FBR depth. Solution: explicit CounterPolicy with scope/reset definitions, generation tracking on job state, and scenario-trace unit tests that assert counter values at every node after rewind.
 
-2. **Zombie Claude CLI processes** -- Subprocesses can hang forever on model timeouts or network issues. Always use `Process.WaitForExit(timeoutMs)` with finite timeout, kill the entire process tree on timeout, track spawned PIDs, and sweep for orphans on startup.
+2. **Stale artifacts surviving rewind** -- Rewind re-executes nodes but doesn't inherently invalidate downstream artifacts. Invisible in v0.1 stubs, catastrophic with real agents. Solution: artifact generation counter per node, version consistency assertions. Design in Phase 1, even if stubs don't produce real artifacts.
 
-3. **Holding database locks during agent invocations** -- Naive single-transaction claim-process-complete holds row locks for minutes. Use the three-phase pattern: short transaction to claim, work outside transaction, short transaction to record results.
+3. **FBR gauntlet path explosion** -- 6 gates with restart-from-top creates combinatorial path space. Depth cap of 5 produces astronomical path counts. Solution: depth cap of 2-3, automated path enumeration tool, RNG simulation with coverage measurement.
 
-4. **Non-idempotent task execution** -- At-least-once delivery means tasks can run twice. All artifact writes must be idempotent (deterministic paths, overwrite not append, atomic rename from temp). Use execution IDs to detect and discard stale results.
+4. **FBR Conditional vs. Fail routing ambiguity** -- In-flow reviews and FBR gates use the same three-outcome model but route differently. DRY instinct leads to a generic handler that gets FBR routing wrong. Solution: per-node transition declarations in the transition table, not type-based routing inference.
 
-5. **Rewind cascade infinite loops** -- Writer and reviewer agents can disagree forever. Circuit breakers must be per-stage AND per-artifact. After N rewrites of the same artifact, escalate strategy (different prompt/model) rather than repeating. Pass previous review feedback into rewrite prompts.
-
-See: `.planning/research/PITFALLS.md`
+5. **Triage state bleed into main pipeline** -- Triage fields bolted onto flat job state create stale diagnostic results on re-entry. Solution: nested TriageContext that is created on triage entry and destroyed on exit.
 
 ## Implications for Roadmap
 
-Based on research, the build order is bottom-up following dependency flow. The architecture layers cleanly into phases where each phase is testable independently before the next begins.
+### Phase 1: Foundation -- State Model and Data Structures
+**Rationale:** Every pitfall identified points back to "get the state model right first." Counter scope, generation tracking, triage context isolation, and artifact versioning all require upfront design. This is the load-bearing foundation.
+**Delivers:** JobState dataclass with generation tracking, Outcome enum, Node ABC, CounterPolicy definitions, transition table data structures (HAPPY_PATH, CONDITIONAL_TARGETS, FAIL_REWIND_TARGETS, FBR_FAIL_TARGETS, TRIAGE_ROUTES), structured logger.
+**Addresses:** Transition table as data, job isolation, counter definitions
+**Avoids:** Pitfalls 1 (counter scope), 5 (triage state bleed), 7 (orphaned counters)
 
-### Phase 1: Database Foundation
-**Rationale:** Everything depends on the Postgres task queue. It's the single source of truth, the coordination mechanism, and the crash recovery layer. Build and test it first in isolation.
-**Delivers:** Schema (tasks, circuit_breakers, job_state tables), partial index, TaskQueue class (claim, complete, fail, stale sweep), concurrent claim simulation tests.
-**Addresses:** Task queue, task state persistence, startup reconciliation.
-**Avoids:** Pitfall #3 (lock holding -- three-phase claim pattern designed from day one), Pitfall #7 (SKIP LOCKED indexing).
+### Phase 2: Stub Nodes and Happy Path Engine
+**Rationale:** Get something running fast. The engine main loop with happy-path-only routing is the first runnable milestone. Every subsequent phase adds to the resolver's resolve() method.
+**Delivers:** StubWorkNode, StubReviewNode, StubTriageNode, Node Registry, Engine main loop, happy-path-only transition resolution. Can run N jobs through the pipeline with all-approve/all-success outcomes.
+**Addresses:** Three-outcome review dispatch, job isolation, structured logging
+**Avoids:** Premature complexity -- prove the loop works before adding branching
 
-### Phase 2: State Machine and Pipeline Definition
-**Rationale:** The transition table is the brain of the system. It must be defined and tested before any worker or agent code exists. This phase validates the entire workflow logic with deterministic unit tests.
-**Delivers:** Transition table dictionary, StateMachine.Advance() method, circuit breaker logic, failure taxonomy (Success, ParseFailure, InfraFailure, QualityFailure, CapabilityFailure, Timeout), integration tests that seed tasks and verify pipeline progression.
-**Addresses:** State machine, circuit breakers, review/severity classification, waterfall pipeline.
-**Avoids:** Pitfall #5 (rewind cascade loops -- per-artifact circuit breakers), Pitfall #8 (conflated failure types -- distinct outcome taxonomy).
+### Phase 3: Review Branching -- Conditional and Fail Paths
+**Rationale:** Conditional routing and fail-rewind are the two most complex mechanics and the primary validation targets. They depend on the working engine loop from Phase 2.
+**Delivers:** Conditional counter with auto-promote, fail-rewind to origin write node, counter reset on rewind, response nodes. The engine now handles all three review outcomes correctly for in-flow reviews.
+**Addresses:** Conditional counter, fail-rewind, response nodes, no-errata constraint
+**Avoids:** Pitfalls 1 (counter reset on rewind), 2 (artifact invalidation), 7 (generation-scoped counters)
 
-### Phase 3: Worker Infrastructure
-**Rationale:** Workers need the queue and state machine but not agents. Build the Claim-Execute-Advance loop with mock executors first. This validates concurrency, shutdown, and error handling without burning tokens.
-**Delivers:** Worker loop, worker pool with 6 dedicated threads, orchestrator lifecycle management, graceful shutdown (CancellationToken), stale task recovery, supervisor pattern for dead thread respawn.
-**Addresses:** Concurrent worker pool, graceful shutdown, idempotent execution.
-**Avoids:** Pitfall #6 (worker thread death), Pitfall #13 (shutdown corruption), Pitfall #11 (state desync).
+### Phase 4: FBR Gauntlet
+**Rationale:** Depends on Phase 3 (reuses conditional/fail routing and response nodes). The gauntlet adds FBR-specific routing: restart-from-top on conditional fix, fbr_return_pending flag, depth cap.
+**Delivers:** FBR gates in transition table, FBR fail/conditional routing, gauntlet restart logic, FBR depth cap with DEAD_LETTER.
+**Addresses:** FBR gauntlet with restart-from-top, FBR depth cap
+**Avoids:** Pitfalls 3 (path explosion -- set cap low), 4 (routing ambiguity -- per-node declarations)
 
-### Phase 4: Agent Integration
-**Rationale:** This is the integration boundary where mocking gives way to real Claude CLI calls. The riskiest phase -- Claude CLI output parsing and subprocess management are the top two critical pitfalls.
-**Delivers:** Skill registry, agent dispatcher (CliWrap wrapper), JSON response parser with resilient non-JSON stripping, subprocess timeout and kill logic, PID tracking, per-task log files (agent stdout/stderr).
-**Addresses:** Per-task agent isolation, structured JSON responses, per-task logging, skill registry, configurable model tier.
-**Avoids:** Pitfall #1 (JSON parsing failures), Pitfall #2 (zombie processes), Pitfall #9 (file system isolation), Pitfall #10 (token budget burn).
+### Phase 5: Triage Sub-Pipeline
+**Rationale:** Depends on Phase 3 (reuses fail-rewind logic for T7 routing). Conceptually a nested state machine with its own entry/exit lifecycle.
+**Delivers:** T1-T7 nodes, TriageRouterNode with earliest-fault-wins logic, triage context lifecycle (create on entry, destroy on exit), triage retry counter with DEAD_LETTER.
+**Addresses:** Triage sub-pipeline, triage retry counter, DEAD_LETTER
+**Avoids:** Pitfalls 5 (triage state bleed), 6 (routing ambiguity -- explicit priority enum)
 
-### Phase 5: Full Pipeline and Rewind Logic
-**Rationale:** With all components proven individually, wire them together for end-to-end pipeline execution. The rewind cascade is the most complex control flow and needs real agent behavior to tune.
-**Delivers:** All skill definitions for all task types, re-review cascade logic with depth caps, full pipeline test (1 job through all stages), multi-job concurrency test, dead letter queue, artifact versioning.
-**Addresses:** Rewind cascade, dead letter queue, artifact versioning, deterministic-only steps.
-**Avoids:** Pitfall #5 (cascade loops -- tuned with real agent data).
+### Phase 6: Retry Exhaustion and DEAD_LETTER Hardening
+**Rationale:** Per-node retry limits can be woven in during Phases 3-5 but deserve a dedicated validation pass. This phase hardens all terminal-state paths and ensures no infinite loops exist.
+**Delivers:** Per-node retry limits enforced at every node, DEAD_LETTER as verified terminal state, circuit breaker for total node executions per job.
+**Addresses:** Per-node retry limits, DEAD_LETTER completeness
+**Avoids:** Any remaining infinite loop scenarios
 
-### Phase 6: Production Run
-**Rationale:** Everything is proven. Seed all 105 jobs, add operational tooling, and execute.
-**Delivers:** Job seeding for all 105 ETL jobs, CLI status/progress commands, token/cost tracking, dry-run mode, pause/resume per job, proofmark integration for validation stage.
-**Addresses:** Job-level progress tracking, token tracking, dry-run mode, pause/resume, proofmark validation.
-**Avoids:** Pitfall #12 (proofmark ordering -- guard conditions on validation entry).
+### Phase 7: Validation Run and Coverage
+**Rationale:** Run 100+ jobs with RNG outcomes and verify all transition edges are exercised. This is the whole point of v0.1 -- prove the state machine is correct.
+**Delivers:** Path coverage report, batch statistics, identification of unexercised edges, configurable RNG weights for targeted coverage.
+**Addresses:** Path coverage reporting, batch statistics, RNG weight config
+**Avoids:** False confidence from tests that only exercise obvious paths
 
 ### Phase Ordering Rationale
 
-- **Bottom-up by dependency:** Queue before state machine, state machine before workers, workers before agents. Each layer is testable without the layer above.
-- **Deterministic before non-deterministic:** Phases 1-3 require zero Claude CLI interaction and can be validated with unit/integration tests. Phase 4 introduces the non-deterministic element.
-- **Cheap before expensive:** Testing the orchestration logic with mock agents costs nothing. Testing with real agents burns tokens. Get the plumbing right first.
-- **Simple before complex:** Basic pipeline flow before rewind cascades. The cascade logic needs real agent behavior data to tune circuit breaker thresholds.
+- **Phase 1 before everything:** All 7 critical pitfalls trace back to state model design decisions. Getting JobState, CounterPolicy, and the transition table data structures right is non-negotiable before any engine code.
+- **Phase 2 early:** The first runnable milestone. Everything after is incremental additions to the resolver.
+- **Phase 3 before 4 and 5:** FBR gauntlet and triage both depend on the conditional/fail routing mechanics built in Phase 3. Fail-rewind is reused by triage T7 routing.
+- **Phases 4 and 5 are independent of each other** once Phase 3 is complete. Could be built in parallel or either order.
+- **Phase 6 as hardening pass:** Retry limits are simple per-counter checks, but verifying all terminal paths requires all other mechanics to be in place.
+- **Phase 7 last:** Validation requires the complete engine.
 
 ### Research Flags
 
 Phases likely needing deeper research during planning:
-- **Phase 4 (Agent Integration):** The exact `claude -p` flags for tool restriction, model selection, and output format need verification against current Claude CLI documentation. The `--output-format json` behavior and `structured_output` key parsing need empirical testing.
-- **Phase 5 (Rewind Logic):** The cascade depth caps and circuit breaker thresholds are guesses until real agent behavior is observed. Plan for tuning iterations.
-- **Phase 6 (Proofmark Integration):** Proofmark's execution model and output comparison format need research during this phase.
+- **Phase 3 (Review Branching):** Counter reset semantics on rewind need scenario-trace design. The transition table specifies what happens but not all counter reset implications. Needs explicit CounterPolicy table before coding.
+- **Phase 4 (FBR Gauntlet):** Path enumeration to validate depth cap choice. Need to calculate actual path counts at cap=2 vs cap=3 before committing.
+- **Phase 5 (Triage Sub-Pipeline):** T7 routing logic and "earliest fault wins" priority need explicit test scenarios designed against the transition table.
 
-Phases with standard, well-documented patterns (skip additional research):
-- **Phase 1 (Database Foundation):** SKIP LOCKED queue pattern is battle-tested. Multiple production implementations exist (Solid Queue, Graphile Worker, River).
-- **Phase 2 (State Machine):** Dictionary-based transition table is trivial. No framework needed.
-- **Phase 3 (Worker Infrastructure):** Dedicated thread pools with CancellationToken are standard .NET patterns.
+Phases with standard patterns (skip research-phase):
+- **Phase 1 (Foundation):** Pure data modeling -- dataclasses, enums, dicts. No unknowns.
+- **Phase 2 (Happy Path Engine):** Simple while loop + dict lookups. Well-understood pattern.
+- **Phase 6 (Retry/DEAD_LETTER):** Counter checks and terminal state. Straightforward.
+- **Phase 7 (Validation Run):** Log analysis and coverage reporting. Standard testing practice.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All packages verified on NuGet with version numbers. .NET 8 LTS timeline confirmed. Only uncertainty is System.CommandLine beta status (low risk). |
-| Features | HIGH | Feature landscape well-defined. Clear separation between table stakes, differentiators, and anti-features. MVP path is unambiguous. |
-| Architecture | HIGH | Component boundaries are clean. Data flow is well-documented. The five-layer decomposition follows established patterns. Postgres-as-truth is proven. |
-| Pitfalls | HIGH | 13 pitfalls identified with specific prevention strategies. Sources include official .NET runtime issues, real-world Claude CLI wrapper failures, and established architecture patterns. |
+| Stack | HIGH | Zero-dependency Python engine is an explicit project constraint. structlog is the only decision and it's well-justified. No ambiguity. |
+| Features | HIGH | Transition table is fully specified in design docs. Every feature maps directly to a transition table mechanic. No guessing about what to build. |
+| Architecture | HIGH | Four-component architecture with centralized resolver is the obvious fit. Design docs are precise enough that this is "translate spec to code." |
+| Pitfalls | HIGH | Pitfalls are derived from the actual transition table mechanics, not generic warnings. Counter scope and rewind semantics are genuine risks grounded in the design. |
 
-**Overall confidence:** HIGH
+**Overall confidence:** HIGH -- This is unusually well-specified for a POC. The transition table IS the spec. The architecture research confirms the design docs' approach. The main risk is implementation bugs in counter management and rewind logic, not uncertainty about what to build.
 
 ### Gaps to Address
 
-- **Claude CLI `--output-format json` reliability:** Research identified the risk (Pitfall #1) but actual failure rates need empirical measurement. Build the resilient parser, then measure during Phase 4 integration testing.
-- **Stateless vs. Dictionary resolution:** Stack and Architecture research disagree on the state machine approach. Recommendation is Dictionary (see Key Findings), but this should be confirmed during Phase 2 planning.
-- **Claude CLI tool restriction flags:** The exact mechanism for constraining agent tool access per skill (`--allowedTools` or equivalent) needs verification against current CLI docs.
-- **Rewind cascade thresholds:** Circuit breaker limits for per-artifact rewrites are undefined. Need real agent data from Phase 4 before tuning in Phase 5.
-- **Polly necessity:** Deferred from the stack. May need transient fault handling for Claude CLI infrastructure failures (network timeouts, rate limits). Evaluate after Phase 4.
+- **Counter reset semantics on rewind:** The transition table specifies rewind targets but doesn't fully specify which counters reset. Need an explicit CounterPolicy table during Phase 1 planning.
+- **FBR depth cap value:** Research says "keep it low (2-3)" but the optimal value depends on path count analysis. Calculate during Phase 4 planning.
+- **Artifact versioning granularity:** v0.1 stubs don't produce real artifacts, but the version-tracking mechanism needs to be designed now so it's not retrofitted later. How much to implement in v0.1 vs. defer is a judgment call.
+- **T7 routing edge cases:** "Multiple faults with earliest-fault-wins" needs explicit test scenarios. What happens when T3 and T6 both fault? Design doc implies T6 is ignored but this needs verification against intent.
+- **"No errata accumulation" enforcement mechanism:** The constraint says "most recent rejection only" but the mechanism for ensuring stale rejection reasons don't leak through needs explicit design.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [PostgreSQL Explicit Locking docs](https://www.postgresql.org/docs/current/explicit-locking.html) -- SKIP LOCKED semantics
-- [Microsoft: System.Threading.Channels](https://learn.microsoft.com/en-us/dotnet/core/extensions/channels) -- producer-consumer pattern
-- [Microsoft: Circuit Breaker pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/circuit-breaker) -- resilience patterns
-- [Npgsql official docs](https://www.npgsql.org/doc/basic-usage.html) -- connection pooling, NpgsqlDataSource
-- [NuGet: Stateless 5.20.1](https://www.nuget.org/packages/stateless/) -- evaluated and rejected
-- [NuGet: CliWrap 3.10.0](https://www.nuget.org/packages/CliWrap) -- subprocess management
-- [NuGet: Serilog 4.3.1](https://www.nuget.org/packages/serilog/) -- structured logging
-- [.NET Runtime Issue #29232](https://github.com/dotnet/runtime/issues/29232) -- WaitForExit async stdout bug
-- [.NET Runtime Issue #81896](https://github.com/dotnet/runtime/issues/81896) -- Process stdout/stderr deadlock
+- POC6 transition table: `/workspace/AtcStrategy/POC6/BDsNotes/state-machine-transitions.md`
+- POC6 architecture: `/workspace/AtcStrategy/POC6/BDsNotes/poc6-architecture.md`
+- POC6 agent taxonomy: `/workspace/AtcStrategy/POC6/BDsNotes/agent-taxonomy.md`
+- [pytransitions/transitions](https://github.com/pytransitions/transitions) -- v0.9.3, evaluated and rejected
+- [python-statemachine](https://python-statemachine.readthedocs.io/) -- v3.0.0, evaluated and rejected
+- [structlog](https://www.structlog.org/) -- v25.5.0, recommended
 
 ### Secondary (MEDIUM confidence)
-- [The Unreasonable Effectiveness of SKIP LOCKED](https://www.inferable.ai/blog/posts/postgres-skip-locked) -- queue patterns
-- [River: Go + Postgres job queue](https://brandur.org/river) -- architectural influence
-- [Vlad Mihalcea: Database Job Queue SKIP LOCKED](https://vladmihalcea.com/database-job-queue-skip-locked/) -- queue implementation
-- [Claude CLI JSON parsing failures](https://github.com/eyaltoledano/claude-task-master/issues/1223) -- real-world failure modes
-- [Claude Code JSON output corruption](https://github.com/anthropics/claude-code/issues/25025) -- stderr contamination
-- [AI Agent Orchestration Patterns - Azure](https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/ai-agent-design-patterns) -- orchestration patterns
+- [Temporal: Beyond State Machines](https://temporal.io/blog/temporal-replaces-state-machines-for-distributed-applications) -- durable execution vs FSM tradeoffs
+- [Workflow Engine vs State Machine](https://workflowengine.io/blog/workflow-engine-vs-state-machine/) -- pattern classification
+- [AWS Step Functions redrive](https://aws.amazon.com/blogs/compute/introducing-aws-step-functions-redrive-a-new-way-to-restart-workflows/) -- rewind/redrive semantics
+- [LlamaIndex retry counter reset bug](https://github.com/run-llama/llama_index/issues/20403) -- counter reset pitfall example
+- [Dapr Workflow Patterns](https://docs.dapr.io/developing-applications/building-blocks/workflow/workflow-patterns/) -- retry/compensation patterns
 
-### Tertiary (needs validation)
-- Claude CLI `--output-format json` exact behavior and `structured_output` key format -- needs empirical testing
-- Claude CLI tool restriction mechanism -- needs current docs verification
-- Optimal circuit breaker thresholds for LLM agent rewrite cycles -- needs production data
+### Tertiary (LOW confidence)
+- [State of Workflow Orchestration 2025](https://www.pracdata.io/p/state-of-workflow-orchestration-ecosystem-2025) -- ecosystem context only
 
 ---
-*Research completed: 2026-03-10*
+*Research completed: 2026-03-13*
 *Ready for roadmap: yes*

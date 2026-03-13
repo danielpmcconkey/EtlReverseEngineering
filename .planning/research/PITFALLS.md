@@ -1,271 +1,278 @@
-# Domain Pitfalls
+# Pitfalls Research
 
-**Domain:** Deterministic ETL orchestration CLI with concurrent workers, Postgres task queue, state machine workflow, Claude CLI subprocess management
-**Researched:** 2026-03-10
+**Domain:** Deterministic workflow engine / state machine with rewind-replay, retry counters, FBR gauntlet, and triage sub-pipeline
+**Researched:** 2026-03-13
+**Confidence:** HIGH (domain-specific analysis grounded in transition table and architecture docs)
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites or major issues.
+### Pitfall 1: Counter Scope Confusion — Which Counter Gets Reset on Rewind?
 
-### Pitfall 1: Claude CLI Output Is Not Reliably JSON
+**What goes wrong:**
+The engine has at least four distinct counter families: per-node conditional counters (3 max before auto-Fail), per-node retry counters, FBR gauntlet depth counter, and triage retry counter. When a Fail rewinds to a write node and replays forward, the question is: which counters reset and which persist? Get this wrong and you either (a) allow infinite loops because counters reset that shouldn't, or (b) unfairly punish jobs because counters persist that shouldn't.
 
-**What goes wrong:** You invoke `claude -p` expecting structured JSON back. Instead you get: natural language preamble before the JSON, Unicode characters (U+2028, U+2029) that break parsers, stderr warnings mixed into stdout, or truncated output on long responses. Reported failure rates as high as 25% in some CLI wrapper projects.
+Example: ReviewBdd gives Conditional twice, then Fail. Job rewinds to WriteBddTestArch and replays forward. When it reaches ReviewBdd again, does the conditional counter start at 0 or 2? If 2, the agent gets one shot before auto-Fail — that's probably wrong since this is a full rewrite, not a targeted fix.
 
-**Why it happens:** The CLI is a wrapper around a model that *wants* to talk. Even with structured output prompts, edge cases leak through. Stderr from the CLI process itself can intermix with stdout. Special characters in code snippets or file paths corrupt the JSON boundary.
+**Why it happens:**
+Developers treat "retry count" as a single concept. In reality, this system has counters scoped to different lifecycle boundaries (per-attempt, per-review-pass, per-gauntlet-run, per-triage-cycle). The transition table says what happens but doesn't fully specify counter reset semantics for every rewind path.
 
-**Consequences:** Worker thread gets an unparseable response, marks task as failed, burns a retry. At scale across 105 jobs with multiple steps each, even a 5% parse failure rate means hundreds of wasted invocations and token spend.
+**How to avoid:**
+Define a `CounterPolicy` that explicitly declares, for every counter type:
+- Reset trigger: what event zeros this counter
+- Scope: what boundary contains it (single review pass, full pipeline pass, gauntlet run, triage cycle)
+- Exhaustion action: what happens when max is hit
 
-**Prevention:**
-- Use `--output-format json` flag and parse from the `structured_output` key, not raw stdout
-- Redirect stderr to a separate stream (Process.StartInfo.RedirectStandardError = true) and capture independently
-- Wrap all JSON parsing in a resilient parser that strips non-JSON preamble/postamble before deserializing
-- Define a "parse failure" as a distinct outcome in the state machine (not the same as "task failed") with its own retry path that costs nothing extra
-- Consider a validation layer: deserialize to a typed C# model, reject if required fields are missing, before advancing state
+Write this as a table before writing code. Test it with scenario traces: "job hits Conditional 3x at ReviewBrd, then Fails, rewinds to WriteBrd, gets back to ReviewBrd — what are the counters?"
 
-**Detection:** Monitor parse failure rate per skill type. If a particular skill consistently fails parsing, the prompt or output schema needs revision, not more retries.
+**Warning signs:**
+- Counter reset logic is implicit (buried in transition handlers rather than explicit policy)
+- No unit tests that trace a job through rewind-and-replay and assert counter values at each node
+- Off-by-one bugs in "4th conditional auto-promotes to Fail" (is it >=3 or >3?)
 
-**Phase relevance:** Must be addressed in the first phase when building the agent invocation layer. Getting this wrong poisons everything downstream.
-
----
-
-### Pitfall 2: Zombie and Orphan Claude CLI Processes
-
-**What goes wrong:** A Claude CLI subprocess hangs (model timeout, network issue, API rate limit) and never exits. The worker thread waits forever, or worse, the orchestrator crashes/restarts and orphans the subprocess. Over time, zombie `claude` processes accumulate, eating memory and potentially holding API connections.
-
-**Why it happens:** `Process.WaitForExit()` without a timeout blocks indefinitely. On Linux (.NET on Docker), child processes that exit without being reaped become zombies. If the orchestrator crashes mid-invocation, there's no parent to reap the children.
-
-**Consequences:** Worker thread is permanently stuck (capacity reduced from 6 to 5, then 4...). Zombie processes fill the process table. Orphaned Claude processes may continue generating tokens and burning budget with no one listening.
-
-**Prevention:**
-- **Always** use `Process.WaitForExit(timeoutMs)` with a generous but finite timeout (e.g., 10 minutes per task, tunable per skill type)
-- On timeout: `process.Kill(entireProcessTree: true)` then `process.WaitForExit()` to reap
-- Track all spawned PIDs in a `ConcurrentDictionary<int, ProcessInfo>` so the orchestrator can kill orphans on startup/shutdown
-- Implement a startup sweep: on orchestrator boot, check for stale `claude` processes and kill them
-- Use `CancellationToken` threading through `WaitForExitAsync` for graceful shutdown coordination
-- Important .NET quirk: when redirecting stdout asynchronously, call the parameterless `WaitForExit()` *after* the timeout version returns true, to ensure async output handlers complete
-
-**Detection:** Periodic health check that counts running `claude` processes and compares to active worker count. Alert if mismatch.
-
-**Phase relevance:** Core infrastructure, same phase as agent invocation. Non-negotiable.
+**Phase to address:**
+Phase 1 (core state machine). Counter semantics must be designed before any transitions are coded. This is load-bearing.
 
 ---
 
-### Pitfall 3: Holding Database Locks During Agent Invocations
+### Pitfall 2: Rewind-Replay Doesn't Actually Replay — Stale Artifacts Survive
 
-**What goes wrong:** Worker claims a task with `SELECT ... FOR UPDATE SKIP LOCKED`, then invokes Claude CLI (which takes 30-120+ seconds), and only commits the transaction after processing the response. The row lock is held the entire time. With 6 workers, that's 6 long-held row locks and 6 connections pinned to open transactions.
+**What goes wrong:**
+When a Fail at ReviewFsd rewinds to WriteFsd and the job "replays the full pipeline forward," the engine must invalidate all downstream artifacts. If it doesn't, downstream nodes may consume stale artifacts from the previous pass. Example: the FSD gets rewritten, but BuildJobArtifacts still sees the old FSD cached somewhere, builds against it, and the review passes because the reviewer is checking the new FSD against old artifacts that happen to match.
 
-**Why it happens:** Naive "claim-process-complete" in a single transaction feels safe. And it is, from a correctness standpoint. But it's a resource disaster.
+In v0.1 with stubs this is invisible. In production with real agents reading real files, it's catastrophic — you get silent correctness failures where everything "passes" but the artifacts are inconsistent.
 
-**Consequences:** Connection pool exhaustion (6 workers = 6 long-held connections, leaving none for status queries or monitoring). Postgres `idle in transaction` connections hold resources. If a worker crashes mid-transaction, the lock is held until Postgres detects the dead connection (could be minutes with default `tcp_keepalives_idle`).
+**Why it happens:**
+The engine tracks state transitions but not artifact lineage. "Replay forward" means "re-execute nodes in order" but doesn't inherently mean "wipe the slate." Artifact invalidation is a separate concern from state transition.
 
-**Prevention:**
-- **Three-phase pattern:** (1) Short transaction: claim task, set status to `claimed`, set `claimed_by` and `claimed_at`, COMMIT. (2) Do the work (agent invocation) outside any transaction. (3) Short transaction: update task with results, advance state, COMMIT.
-- Add a `visibility_timeout` column: if a task has been `claimed` for longer than N minutes without completion, it's eligible for reclaim by another worker (the original worker crashed)
-- Set `statement_timeout` and `idle_in_transaction_session_timeout` in Postgres as safety nets
-- Connection pool size = workers + margin (e.g., 10 for 6 workers), not matched 1:1
+**How to avoid:**
+Model artifact invalidation explicitly. When a rewind occurs:
+1. Record which node the rewind targets
+2. Mark all artifacts produced by that node and every downstream node as invalid
+3. Each node, on entry, asserts its input artifacts are valid (not stale-marked)
 
-**Detection:** Monitor `pg_stat_activity` for `idle in transaction` connections. Alert if any transaction is open longer than your expected max agent invocation time.
+For v0.1 stubs: simulate this with a `artifact_version` counter per node. Each execution increments it. Downstream nodes record which version of upstream artifacts they consumed. On rewind, assert version consistency.
 
-**Phase relevance:** Database/queue design phase. Must be right from day one -- changing the claim pattern later means rewriting the worker loop.
+**Warning signs:**
+- No concept of "artifact version" or "artifact validity" in the job state model
+- Rewind logic only updates `current_node` without touching artifact metadata
+- Integration tests pass in v0.1 but would silently fail with real artifacts
 
----
-
-### Pitfall 4: Non-Idempotent Task Execution Causes Duplicate Artifacts
-
-**What goes wrong:** A task runs, produces artifacts (writes a BRD file, creates a Python module), but the orchestrator crashes before recording completion. On restart, the visibility timeout expires, another worker picks up the "uncompleted" task and runs it again. Now you have duplicate or conflicting artifacts.
-
-**Why it happens:** At-least-once delivery is inherent in any system where "do work" and "record completion" aren't atomic. And they can't be atomic when the work involves writing files to disk and invoking external processes.
-
-**Consequences:** Duplicate files, corrupted state, or worse -- a half-written artifact from run 1 gets overwritten by run 2, but run 1's metadata is what the state machine uses to advance. Subtle corruption that may not surface until validation.
-
-**Prevention:**
-- Make every task idempotent by design: writing a BRD should overwrite, not append. Use deterministic file paths based on job ID and artifact type
-- Record a `task_execution_id` (GUID) with each invocation. On completion, check that the execution ID matches before recording results (if it doesn't, a reclaim happened and this result should be discarded)
-- Use the database as the source of truth for "what was produced," not the filesystem. Task completion should record artifact paths and checksums
-- For file writes: write to a temp path, then atomic rename on success
-
-**Detection:** Log every task execution with its execution ID. If you see two execution IDs for the same task, investigate immediately.
-
-**Phase relevance:** Task execution and artifact management phases. The idempotency contract must be defined early even if enforcement comes later.
+**Phase to address:**
+Phase 1 design, Phase 2 implementation. The v0.1 stub layer should at minimum track a generation counter per node to prove the invalidation logic works, even if no real artifacts exist yet.
 
 ---
 
-### Pitfall 5: State Machine Rewind Cascade Creates Infinite Loops
+### Pitfall 3: FBR Gauntlet Creates Combinatorial Explosion of Paths
 
-**What goes wrong:** The re-review cascade logic (final build review can trigger re-reviews of BRD/BDD/FSD, substantive failures rewind to Write step) creates a cycle where: Agent writes BRD -> reviewer says substantive fail -> rewind to write BRD -> agent writes slightly different BRD -> reviewer says substantive fail -> repeat forever.
+**What goes wrong:**
+The FBR gauntlet has 6 serial gates. Each gate can Approve, Conditional (which routes to response node, then review, then restarts gauntlet from top), or Fail (which rewinds to original write node, replays forward through the entire pipeline, and eventually re-enters the gauntlet). With a depth cap of N, the theoretical path space is enormous. A single FBR_FsdCheck Conditional triggers: WriteFsdResponse -> ReviewFsd -> FBR_BrdCheck -> FBR_BddCheck -> FBR_FsdCheck (6+ transitions). A Fail triggers even more.
 
-**Why it happens:** LLM agents aren't deterministic. A reviewer agent might consistently reject output that a writer agent consistently produces. Two agents can have irreconcilable "opinions" about what's correct, especially on subjective quality judgments.
+The combinatorial explosion makes it nearly impossible to reason about correctness by inspection. You need automated path coverage.
 
-**Consequences:** A single job gets stuck in an infinite rewind loop, consuming worker capacity and token budget indefinitely. With circuit breakers, it eventually stops -- but if the circuit breaker threshold is too generous (e.g., 5 retries * 3 artifact types * 2 review stages = 30 attempts), that's a lot of waste before it trips.
+**Why it happens:**
+The gauntlet design is correct — a downstream fix genuinely can invalidate an upstream pass. But the "always restart from top" invariant means every failure multiplies the path count. Developers underestimate how many distinct paths exist and write tests for the obvious ones while missing edge cases like "FBR_BddCheck Conditional, fix, restart, then FBR_FsdCheck Fail on the second pass."
 
-**Prevention:**
-- Circuit breakers must be per-stage, per-job, AND per-artifact. "BRD for Job 42 has been rewritten 3 times" is the meaningful metric, not "Job 42 has had 3 failures"
-- Escalation, not repetition: after N rewrites of the same artifact, escalate to a different strategy (different prompt, different model tier, or flag for human review) rather than running the same skill again
-- Pass previous review feedback into rewrite prompts so the agent knows what to fix (without this, it will produce the same output)
-- Log the full review -> rewrite -> re-review chain for post-mortem analysis
-- Consider a "diff threshold": if the rewrite is <10% different from the previous version, the agent isn't capable of addressing the feedback -- circuit break immediately
+**How to avoid:**
+1. Build a path enumeration tool early. Given the transition table, enumerate all possible paths through the gauntlet up to depth cap N. Use this to generate test scenarios automatically.
+2. Instrument the engine to log the full path trace (sequence of nodes visited). After running N jobs with RNG outcomes, assert that path coverage includes at least the critical edge cases.
+3. Keep the depth cap low (2-3). The math on combinatorial paths with depth cap 5+ is ugly.
 
-**Detection:** Dashboard showing rewrite counts per artifact per job. Any artifact hitting rewrite count >= 2 deserves attention.
+**Warning signs:**
+- Manual test case lists that only cover "happy path" and "one failure" scenarios
+- No path trace logging
+- FBR depth cap set high "just in case" without understanding the path explosion
+- Tests pass but only exercise a tiny fraction of possible gauntlet paths
 
-**Phase relevance:** State machine design phase, but the circuit breaker tuning will need adjustment during the Build phase once you see real agent behavior.
-
-## Moderate Pitfalls
-
-### Pitfall 6: Worker Thread Exception Kills the Pool
-
-**What goes wrong:** An unhandled exception in a worker thread (null reference from unexpected agent output, network timeout, file system error) crashes that thread. If using raw `Thread` objects, the thread is gone forever. The orchestrator continues with 5 workers, then 4, then 3, silently degrading.
-
-**Prevention:**
-- Wrap the entire worker loop in try/catch. The catch should log, mark the current task as failed with the exception details, and **continue the loop** -- never let a single task failure kill the worker
-- Use a supervisor pattern: a manager thread monitors worker health and respawns dead workers
-- Prefer `Task.Run` with a proper exception handling pipeline over raw `Thread` objects. Unobserved task exceptions in .NET are swallowed by default but logged -- make sure you're observing them
-- `SemaphoreSlim(6)` controlling concurrency is more resilient than managing 6 explicit threads
-
-**Detection:** Log worker heartbeats. If a worker hasn't logged activity in longer than the max expected task duration, it's dead or stuck.
-
-**Phase relevance:** Worker pool infrastructure phase.
+**Phase to address:**
+Phase 1 (design the depth cap), Phase 2 (build path enumeration), Phase 3 (run RNG simulations and measure path coverage).
 
 ---
 
-### Pitfall 7: SKIP LOCKED Without Proper Indexing Becomes a Full Table Scan
+### Pitfall 4: Conditional vs. Fail Routing Ambiguity at FBR Gates
 
-**What goes wrong:** `SELECT ... WHERE status = 'pending' ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1` looks elegant. Without a composite index on `(status, created_at)`, Postgres does a sequential scan of the entire tasks table, checking locks row by row. As completed tasks accumulate (thousands over 105 jobs * ~15 steps each), this gets progressively slower.
+**What goes wrong:**
+In-flow reviews and FBR gates both use the three-outcome model (Approve/Conditional/Fail), but the routing is subtly different. For in-flow reviews, Conditional goes to response node and returns to the same reviewer. For FBR gates, Conditional goes to response node, goes through review, then restarts the entire gauntlet from FBR_BrdCheck. The FBR Fail path is even more different — it rewinds to the original write node and replays the entire pipeline forward.
 
-**Prevention:**
-- Create a composite index: `CREATE INDEX idx_tasks_queue ON tasks (status, created_at) WHERE status = 'pending'` (partial index -- even better)
-- Periodically archive or partition completed tasks so the working set stays small
-- Be aware: `FOR UPDATE SKIP LOCKED` forces heap access even with an index (can't do index-only scans), so keep the table slim
-- Consider a separate `task_queue` table for pending work vs. a `task_history` table for completed work
+If the engine uses a single generic "handle review outcome" function, the FBR-specific routing gets wrong. Or worse, it gets the Conditional right but the Fail wrong (or vice versa).
 
-**Detection:** `EXPLAIN ANALYZE` on your claim query periodically. Watch for sequential scans or increasing query times.
+**Why it happens:**
+DRY instinct. "Review nodes all work the same way" is true for the outcome model but false for the routing. Developers abstract too early and the abstraction leaks.
 
-**Phase relevance:** Database schema design phase.
+**How to avoid:**
+Make the transition table the source of truth in code, not just in documentation. Each node should declare its own transition map: `{APPROVE: next_node, CONDITIONAL: response_node, FAIL: rewind_target}`. The FBR gates declare `{CONDITIONAL: response_node, ..., restart_target: FBR_BrdCheck}` as an additional field. Don't try to derive routing from node type — declare it explicitly per node.
 
----
+**Warning signs:**
+- A `ReviewNode` base class with overridable routing methods (inheritance = bugs)
+- FBR routing logic that relies on string matching node names to decide behavior
+- Conditional at FBR gate doesn't restart from FBR_BrdCheck (goes back to just that gate)
 
-### Pitfall 8: Conflating "Task Failed" with "Agent Produced Wrong Output"
-
-**What goes wrong:** The orchestrator treats every non-success as the same failure type. But there's a massive difference between: (a) Claude CLI crashed / timed out / returned garbage (infrastructure failure), (b) Agent returned valid JSON but the content is wrong (quality failure), and (c) Agent returned valid JSON indicating it can't do the work (capability failure). Retry strategy should differ for each.
-
-**Prevention:**
-- Define distinct outcome types in the state machine: `Success`, `ParseFailure`, `InfraFailure`, `QualityFailure`, `CapabilityFailure`, `Timeout`
-- Infrastructure failures get automatic retry (probably transient)
-- Quality failures go through the review/rewrite cycle
-- Capability failures get escalated (different model, human review, skip with flag)
-- Parse failures get automatic retry with possibly adjusted prompt formatting
-- Different circuit breaker thresholds for each failure type
-
-**Detection:** Failure type distribution per skill. If one skill type has 80% capability failures, the skill design is wrong, not the infrastructure.
-
-**Phase relevance:** State machine design phase, but the failure taxonomy should be defined during architecture.
+**Phase to address:**
+Phase 1 (transition table as data structure). This should be a literal dictionary/enum mapping, not procedural logic.
 
 ---
 
-### Pitfall 9: Per-Job Isolation Violations Through Shared File System
+### Pitfall 5: Triage Sub-Pipeline State Bleeds Into Main Pipeline State
 
-**What goes wrong:** The project says "per-job isolation -- no cross-job contamination." But 6 workers writing artifacts concurrently to the same file system can collide. Two jobs might write to the same directory, one job's agent might read another job's in-progress artifact as context, or file path conventions might collide.
+**What goes wrong:**
+The triage sub-pipeline (T1-T7) is conceptually separate from the main pipeline but shares the same job. If triage state (which diagnostic step we're on, what faults were found, triage retry counter) is stored in the same flat namespace as main pipeline state, you get collisions. Worse: when triage routes back to a main pipeline node (e.g., WriteBrd), the triage state needs to be cleaned up. If it isn't, the next time the job enters triage, it sees stale diagnostic results from the previous triage pass.
 
-**Prevention:**
-- Enforce a strict directory convention: `/workspace/artifacts/{job_id}/` with no exceptions
-- Agent invocations should include explicit working directory constraints in the prompt
-- The orchestrator should create job directories before dispatching any tasks for that job
-- Consider using the `--allowedTools` flag in Claude CLI to restrict file system access to the job's directory
-- Never pass relative paths to agents -- always absolute paths scoped to the job
+**Why it happens:**
+The job state object starts as a flat dict: `{current_node: "...", retry_counts: {...}, ...}`. Triage fields get bolted on: `{triage_step: "T3", triage_faults: [...], triage_retry: 2}`. Nobody cleans these up when exiting triage.
 
-**Detection:** Post-task validation: check that all files written by a task are within the expected job directory. Flag any out-of-scope writes.
+**How to avoid:**
+Model triage as a nested state scope. The job has a `triage_context` that is created on entry to triage and destroyed on exit. Main pipeline state and triage state are structurally separate. When Triage_Route sends the job back to a main pipeline node, the triage context is archived (for logging) and cleared.
 
-**Phase relevance:** Agent invocation design and artifact management phases.
+```python
+@dataclass
+class TriageContext:
+    step: str
+    faults: list[tuple[str, str]]  # (layer, reason)
+    retry_count: int
+    data_profile: Any
+    og_analysis: Any
 
----
+@dataclass
+class JobState:
+    current_node: str
+    counters: dict[str, int]
+    triage: TriageContext | None  # None when not in triage
+```
 
-### Pitfall 10: Token Budget Burn from Unconstrained Agent Context
+**Warning signs:**
+- Triage fields mixed into the main job state dict
+- No explicit "enter triage" / "exit triage" transitions
+- Triage retry counter doesn't reset when triage routes back to main pipeline and the job eventually re-enters triage
 
-**What goes wrong:** Skills pass too much context to Claude CLI agents. A "review BRD" skill sends the entire source code of the OG ETL job plus the BRD plus all previous review history. The agent hits the context window limit, or the token cost per invocation balloons. Multiply by 105 jobs and the budget explodes.
-
-**Prevention:**
-- Each skill definition should have a `max_input_tokens` estimate. Track actual usage and alert when it exceeds the estimate
-- Use the `--max-turns 1` flag (or equivalent) to prevent agent from spawning tool-use loops that burn tokens
-- Budget caps per skill type, not just per job. A BRD review should cost roughly the same for every job
-- The skill registry should define exactly what context each skill receives -- no "throw everything at it" defaults
-- Consider tiered models: use cheaper/faster models for rote tasks (formatting, simple reviews) and expensive models only for complex reasoning
-
-**Detection:** Track token usage per skill invocation. Establish baselines in the first 10 jobs, then alert on deviations > 2x.
-
-**Phase relevance:** Skill registry design phase. The budget constraints need to be baked into the skill definitions.
-
-## Minor Pitfalls
-
-### Pitfall 11: Orchestrator State Desynchronizes from Postgres
-
-**What goes wrong:** The orchestrator caches task state in memory for performance. A crash loses the in-memory state, and on restart, the orchestrator's view of the world doesn't match Postgres. Or worse, the orchestrator advances in-memory state but fails to write it to Postgres.
-
-**Prevention:**
-- Postgres is the single source of truth. Period. Workers read state from Postgres before every decision, write state to Postgres after every action. No in-memory state caching for task status
-- If you need caching for performance, use it only for immutable data (skill definitions, job metadata), never for mutable state (task status, progress)
-
-**Detection:** Startup reconciliation: on boot, verify all `claimed` tasks are actually being worked on. Any `claimed` task with no active worker gets reset to `pending`.
-
-**Phase relevance:** Worker pool infrastructure.
+**Phase to address:**
+Phase 1 (job state model design). Get the data model right before implementing triage transitions.
 
 ---
 
-### Pitfall 12: Proofmark Validation Ordering and Timing
+### Pitfall 6: "Earliest Fault Wins" Triage Routing Is Ambiguous
 
-**What goes wrong:** Proofmark comparison requires both the OG and RE jobs to have been executed and produced output. If the orchestrator kicks off proofmark validation before the RE job has actually run (or before OG data is available), you get false failures or meaningless comparisons.
+**What goes wrong:**
+T7 routes to the "earliest" fault when multiple triage checks find problems. But what does "earliest" mean? Earliest in the main pipeline order (BRD before FSD before code before proofmark)? Or earliest triage check that found a fault (T3 before T4 before T5 before T6)? In the current design these happen to be the same order, but the implementation might not encode that assumption correctly. If someone reorders the triage checks or adds a new one, "earliest" silently means the wrong thing.
 
-**Prevention:**
-- Proofmark validation should be the absolute last step, gated by explicit preconditions (RE job executed successfully, OG output available, proofmark config reviewed and approved)
-- Model this as a state machine guard condition, not just ordering. The state transition to "validate" should check preconditions, not just assume the previous step handled it
+Additionally: T6 (proofmark config) is described as "only meaningful if T3-T5 all came back clean." If T3 finds a fault AND T6 finds a fault, should T6's fault be ignored (since it might be a false positive caused by T3's underlying issue)? The design doc implies yes, but the routing logic might not enforce it.
 
-**Detection:** Proofmark failures that are "file not found" or "empty output" rather than actual comparison differences indicate ordering problems.
+**Why it happens:**
+The routing rule is stated in English ("earliest fault wins") but the ordering is implicit. Developers implement it as "first fault in a list" without encoding the priority order explicitly.
 
-**Phase relevance:** Validate phase design.
+**How to avoid:**
+Define fault priority as an explicit ordered enum:
+```python
+TRIAGE_PRIORITY = ["BRD", "FSD", "CODE", "PROOFMARK"]
+```
+T7 routing: sort faults by this priority, take the first. Also: if a higher-priority fault exists, discard lower-priority faults (they may be downstream symptoms).
+
+**Warning signs:**
+- Faults stored in a dict (unordered) rather than evaluated against a priority list
+- T6 fault is acted on even when T3/T4/T5 also found faults
+- No test case for "multiple faults, verify correct routing target"
+
+**Phase to address:**
+Phase 2 (triage implementation). Design the priority enum in Phase 1.
 
 ---
 
-### Pitfall 13: Graceful Shutdown Is Harder Than You Think
+### Pitfall 7: Fail-Rewind Creates Orphaned Response Nodes in History
 
-**What goes wrong:** You hit Ctrl+C or Docker sends SIGTERM. The orchestrator needs to: stop claiming new tasks, wait for in-flight tasks to complete (or time out), kill any stuck agent subprocesses, and update Postgres to release claimed tasks. Getting this wrong means tasks stuck in `claimed` state until visibility timeout expires on next boot.
+**What goes wrong:**
+A job is at ReviewBrd. It gets Conditional, goes to WriteBrdResponse, comes back to ReviewBrd. Gets Conditional again, goes to WriteBrdResponse again, comes back. Gets Fail, rewinds to WriteBrd. Now the job walks the full happy path forward. When it hits ReviewBrd again, is this a "fresh" review or does the engine think there are prior Conditionals? If the engine tracks "times this review node has been visited" without distinguishing between pipeline passes, the history from the previous pass contaminates the current one.
 
-**Prevention:**
-- Handle `Console.CancelKeyPress` and `AppDomain.CurrentDomain.ProcessExit`
-- Use a `CancellationTokenSource` that all workers check between iterations
-- On shutdown signal: set cancellation token, stop the claim loop, wait for in-flight tasks with a shutdown timeout (e.g., 30 seconds), then force-kill remaining subprocesses
-- Mark any incomplete tasks back to `pending` in Postgres during shutdown
+This is a specific case of Pitfall 1 (counter scope confusion) but applied to node visit history rather than just counters.
 
-**Detection:** After restart, check how many tasks were in `claimed` state. If it's consistently > 0, shutdown isn't clean.
+**Why it happens:**
+The engine tracks per-node state without a concept of "pipeline pass" or "generation." Each rewind starts a new logical generation, but if the state model is flat, old and new generations are indistinguishable.
 
-**Phase relevance:** Worker pool infrastructure, but easy to defer and regret later. Build it with the worker loop.
+**How to avoid:**
+Introduce a `generation` counter on the job. Each rewind increments it. Counters and visit history are scoped to `(node_name, generation)`. When generation increments, all per-node counters for affected nodes reset to zero.
 
-## Phase-Specific Warnings
+**Warning signs:**
+- Per-node counters stored as `{node_name: count}` without generation scoping
+- A rewind to WriteBrd doesn't reset the conditional counter for ReviewBrd
+- Test: "Conditional 2x -> Fail -> rewind -> new pass reaches ReviewBrd -> conditional counter should be 0" — if this test doesn't exist, the bug exists
 
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Database schema design | SKIP LOCKED without index (#7), lock holding during work (#3) | Design the three-phase claim pattern and partial index from day one |
-| State machine design | Rewind cascade loops (#5), conflated failure types (#8) | Define failure taxonomy and per-artifact circuit breakers before coding |
-| Agent invocation layer | JSON parse failures (#1), zombie processes (#2), token burn (#10) | Build robust subprocess wrapper with timeout, stderr separation, resilient parsing |
-| Worker pool | Thread death (#6), shutdown (#13), state desync (#11) | Supervisor pattern, CancellationToken throughout, Postgres as sole truth |
-| Artifact management | Idempotency (#4), job isolation (#9) | Deterministic paths, atomic writes, execution IDs |
-| Skill registry | Token budget (#10), failure types (#8) | Per-skill budget caps, context limits, model tier assignments |
-| Validate phase | Proofmark ordering (#12) | Guard conditions on state transitions, explicit precondition checks |
+**Phase to address:**
+Phase 1 (state model design). The generation concept must be part of the initial job state schema.
+
+---
+
+## Technical Debt Patterns
+
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Flat dict for job state | Fast to prototype | Counter scope bugs, triage state bleed, no generation tracking | Never — use dataclasses from day 1, cost is trivial |
+| Transition logic in if/elif chains | Easy to read initially | Unmaintainable at 27+ nodes, FBR routing buried in conditionals | v0.1 stub phase only, refactor before adding real agents |
+| Hardcoded node order | No need for graph traversal | Can't add nodes or reorder without rewriting routing logic | Never — use a declared transition table data structure |
+| Single "handle_review" function for all review types | DRY | FBR routing bugs (Pitfall 4) | Never — declare per-node transitions explicitly |
+| Counters as bare ints on job state | Simple | No reset semantics, no generation scoping (Pitfalls 1, 7) | Never — wrap in a Counter class with scope/reset policy |
+
+## Performance Traps
+
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| Unbounded FBR depth cap | Jobs loop through gauntlet dozens of times | Set depth cap to 2-3, analyze path explosion before increasing | Immediately if depth cap > 4 — exponential path space |
+| Full pipeline replay on every Fail | Single Fail at late node (ReviewUnitTests) triggers replay of 15+ nodes | This is by design, but monitor replay depth. Add circuit breaker: if total node executions for a job exceed threshold, DEAD_LETTER | At scale with 105 jobs, pathological cases could dominate runtime |
+| Triage re-executing proofmark repeatedly | Triage finds fault, fixes, re-runs proofmark, fails again, re-triages | Triage retry cap must be low (2-3). Each proofmark execution is expensive | When proofmark involves real data comparison across effective dates |
+| Linear scan of 105 jobs checking state | O(n) job polling per engine tick | Use priority queue or state-indexed lookup | Not in v0.1, but design for it now |
+
+## Integration Gotchas
+
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| Postgres task queue (future) | Storing full job state in the queue row | Queue holds task ID + minimal routing info. Job state lives in a separate table. Queue is claimed-and-released, state is read-and-updated |
+| Claude CLI agents (future) | Parsing agent output as trusted | Validate JSON schema of agent responses. Agents can return malformed output. Treat agent output as untrusted input |
+| Proofmark execution (future) | Assuming proofmark is deterministic | Proofmark compares data outputs — if the underlying ETL has non-deterministic elements (timestamps, floating point), proofmark may flap. Triage must distinguish "genuine fault" from "noise" |
+| File system artifacts (future) | Reading/writing artifacts without locking | In concurrent mode, two agents could write to the same artifact path. Use job-scoped directories with atomic writes |
+
+## "Looks Done But Isn't" Checklist
+
+- [ ] **Rewind logic:** Rewinds to correct write node but doesn't reset downstream counters — verify counter state after rewind with a trace test
+- [ ] **FBR Conditional:** Routes to response node and reviewer, but doesn't restart gauntlet from FBR_BrdCheck — verify the full Conditional path, not just the first hop
+- [ ] **4th Conditional auto-Fail:** Boundary condition — verify it triggers on exactly the 4th (not 3rd or 5th), and that the resulting Fail follows Fail routing (not Conditional routing)
+- [ ] **Triage exit:** Triage routes back to main pipeline node, but triage context (faults, diagnostic artifacts, retry counter) isn't cleaned up — verify triage state is None after exit
+- [ ] **DEAD_LETTER:** Node exhausts retries and enters DEAD_LETTER, but the job's `current_node` still points to the failed node — verify DEAD_LETTER is a terminal state that prevents further transitions
+- [ ] **FBR depth cap:** Counter increments on gauntlet restart but not on individual gate failures within a single pass — verify the cap counts complete gauntlet restarts, not individual gate visits
+- [ ] **Response node routing:** WriteBrdResponse routes back to ReviewBrd (not to the next node in the happy path) — verify response nodes always loop back to their reviewer
+- [ ] **Triage routing targets:** T7 routes to main pipeline write nodes (WriteBrd, WriteFsd, etc.), not to review nodes or response nodes — verify the rewind targets match the transition table exactly
+
+## Recovery Strategies
+
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| Counter scope confusion (Pitfall 1) | MEDIUM | Add generation tracking to job state, write migration for in-flight jobs, re-run affected jobs |
+| Stale artifacts survive rewind (Pitfall 2) | HIGH | Retrofit artifact versioning, audit all completed jobs for consistency, re-run suspect jobs |
+| FBR path explosion (Pitfall 3) | LOW | Lower depth cap, add circuit breaker. No data corruption, just wasted compute |
+| FBR routing wrong (Pitfall 4) | MEDIUM | Fix transition table, re-run affected jobs. Corruption depends on how far wrong routing went |
+| Triage state bleed (Pitfall 5) | MEDIUM | Refactor job state model, clear triage context on affected jobs, re-run from last known good state |
+| Triage routing ambiguity (Pitfall 6) | LOW | Fix priority ordering, re-triage affected jobs. Usually caught in testing |
+| Orphaned counters across generations (Pitfall 7) | MEDIUM | Add generation scoping, reset counters for in-flight jobs at current generation |
+
+## Pitfall-to-Phase Mapping
+
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| Counter scope confusion | Phase 1: State model design | Unit test: trace job through Conditional -> Fail -> rewind -> re-review, assert counter values |
+| Stale artifact survival | Phase 1: Design, Phase 2: Implement | Unit test: rewind at node N, assert all nodes > N have artifact_version incremented |
+| FBR path explosion | Phase 1: Set depth cap, Phase 2: Path enumeration | Automated: enumerate paths up to depth cap, report count. Manual: review for sanity |
+| FBR routing ambiguity | Phase 1: Transition table as data | Integration test: FBR Conditional and Fail at each gate, verify full routing path |
+| Triage state bleed | Phase 1: Job state model | Unit test: enter triage, route back to main pipeline, re-enter triage, assert clean context |
+| Triage routing ambiguity | Phase 1: Priority enum, Phase 2: T7 logic | Unit test: multiple faults, verify routing to earliest. Edge case: T6 fault with T3 fault |
+| Orphaned counters | Phase 1: Generation concept | Unit test: two full passes through same review node, verify counter independence |
 
 ## Sources
 
-- [The Unreasonable Effectiveness of SKIP LOCKED](https://www.inferable.ai/blog/posts/postgres-skip-locked) - Postgres queue patterns
-- [Netdata: FOR UPDATE SKIP LOCKED](https://www.netdata.cloud/academy/update-skip-locked/) - Deadlock-free queue workflows
-- [Neon: Queue System using SKIP LOCKED](https://neon.com/guides/queue-system) - Queue implementation guide
-- [Alex Stoica: FOR UPDATE SKIP LOCKED Performance](https://www.alexstoica.com/blog/postgres-select-for-update-perf) - Index impact on SKIP LOCKED
-- [.NET Runtime Issue #29232: WaitForExit hangs](https://github.com/dotnet/runtime/issues/29232) - Process.WaitForExit async stdout bug
-- [.NET Runtime Issue #21661: Zombie processes on Linux](https://github.com/dotnet/corefx/issues/19695) - Process.Start zombie process problem
-- [Andrew Lock: Stopped waiting doesn't stop the Task](https://andrewlock.net/just-because-you-stopped-waiting-for-it-doesnt-mean-the-task-stopped-running/) - Task cancellation misconceptions
-- [Claude Structured Outputs docs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) - Official structured output guidance
-- [claude-task-master Issue #1223: AI response parsing](https://github.com/eyaltoledano/claude-task-master/issues/1223) - Real-world Claude CLI JSON parsing failures
-- [claude-code Issue #25025: JSON output corruption](https://github.com/anthropics/claude-code/issues/25025) - Stderr corrupting JSON output
-- [SFEIR: Claude Code Headless Mode Common Mistakes](https://institute.sfeir.com/en/claude-code/claude-code-headless-mode-and-ci-cd/errors/) - CLI headless mode pitfalls
-- [Milan Jovanovic: Idempotent Consumer Pattern](https://www.milanjovanovic.tech/blog/the-idempotent-consumer-pattern-in-dotnet-and-why-you-need-it) - .NET idempotency patterns
-- [Vlad Mihalcea: Database Job Queue SKIP LOCKED](https://vladmihalcea.com/database-job-queue-skip-locked/) - Queue implementation patterns
-- [PostgreSQL Advisory Locks guide](https://appmaster.io/blog/postgresql-advisory-locks-double-processing) - Advisory vs row locks for queues
-- [Temporal: Beyond State Machines](https://temporal.io/blog/temporal-replaces-state-machines-for-distributed-applications) - State machine orchestration complexity
-- [Richard Clayton: Use State Machines](https://rclayton.silvrback.com/use-state-machines) - State machine design patterns
-- [Or Ben Shmueli: Task and Concurrency in C#](https://medium.com/@orbens/advanced-task-and-concurrency-management-in-c-patterns-pitfalls-and-solutions-129d9536f233) - C# concurrency pitfalls
-- [Mark Heath: Constraining Concurrent Threads](https://markheath.net/post/constraining-concurrent-threads-csharp) - SemaphoreSlim patterns
+- Project transition table: `/workspace/AtcStrategy/POC6/BDsNotes/state-machine-transitions.md`
+- Project architecture: `/workspace/AtcStrategy/POC6/BDsNotes/poc6-architecture.md`
+- [Temporal retry policies and failure handling](https://temporal.io/blog/failure-handling-in-practice) — retry semantics, activity vs workflow retry distinction
+- [LlamaIndex retry counter reset bug](https://github.com/run-llama/llama_index/issues/20403) — counter reset to 0 on retry causing infinite loops
+- [Genesys workflow counter types](https://help.genesys.com/latitude/liquid/mergedProjects/WorkFlow/desktop/check_counter.htm) — multiple counter scopes (local, workflow, account) as source of confusion
+- [AWS Step Functions redrive](https://aws.amazon.com/blogs/compute/introducing-aws-step-functions-redrive-a-new-way-to-restart-workflows/) — rewind/redrive semantics, only resume from failed state
+- [Temporal replay determinism requirements](https://community.temporal.io/t/understanding-how-workflow-replay-is-working/11327) — replay must not re-execute side effects
+- [State machines as bug prevention](https://blog.scottlogic.com/2020/12/08/finite-state-machines.html) — invalid state bugs from implicit state machines
+- [Argo Workflows retries](https://argo-workflows.readthedocs.io/en/latest/retries/) — retry policy configuration patterns
+
+---
+*Pitfalls research for: POC6 Deterministic Workflow Engine*
+*Researched: 2026-03-13*
