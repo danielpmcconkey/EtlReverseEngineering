@@ -21,7 +21,7 @@ Requirements for v0.1 release. Each maps to roadmap phases.
 
 ### Happy Path
 
-- [ ] **HP-01**: 27 happy-path nodes execute in order from LocateOgSourceFiles through FinalSignOff -> COMPLETE
+- [x] **HP-01**: 27 happy-path nodes execute in order from LocateOgSourceFiles through FinalSignOff -> COMPLETE
 - [x] **HP-02**: Each node is a stub with a comment describing what the real agent will do
 - [x] **HP-03**: Non-review stubs return Success/Failure via RNG
 - [x] **HP-04**: Review stubs return Approve/Conditional/Fail via RNG
@@ -53,16 +53,16 @@ Requirements for v0.1 release. Each maps to roadmap phases.
 
 ### Engine
 
-- [ ] **ENG-01**: Engine main loop: pick job, resolve transition, execute stub, advance state, repeat
-- [ ] **ENG-02**: Run N configurable jobs through the full pipeline
-- [ ] **ENG-03**: In-memory job state (no Postgres)
-- [ ] **ENG-04**: Single-threaded sequential execution
+- [x] **ENG-01**: Engine main loop: pick job, resolve transition, execute stub, advance state, repeat
+- [x] **ENG-02**: Run N configurable jobs through the full pipeline
+- [x] **ENG-03**: In-memory job state (no Postgres)
+- [x] **ENG-04**: Single-threaded sequential execution
 
 ### Logging
 
 - [x] **LOG-01**: Structured JSON logging via structlog
-- [ ] **LOG-02**: Every transition logged: job ID, node name, outcome, main retry count, conditional counts
-- [ ] **LOG-03**: Logs are sufficient for post-hoc agent analysis of workflow correctness
+- [x] **LOG-02**: Every transition logged: job ID, node name, outcome, main retry count, conditional counts
+- [x] **LOG-03**: Logs are sufficient for post-hoc agent analysis of workflow correctness
 
 ### Project Structure
 
@@ -111,7 +111,7 @@ Requirements for v0.1 release. Each maps to roadmap phases.
 | SM-07 | Phase 2 | Pending |
 | SM-08 | Phase 2 | Pending |
 | SM-09 | Phase 2 | Pending |
-| HP-01 | Phase 1 | Pending |
+| HP-01 | Phase 1 | Complete |
 | HP-02 | Phase 1 | Complete |
 | HP-03 | Phase 1 | Complete |
 | HP-04 | Phase 1 | Complete |
@@ -131,13 +131,13 @@ Requirements for v0.1 release. Each maps to roadmap phases.
 | TR-05 | Phase 3 | Pending |
 | TR-06 | Phase 3 | Pending |
 | TR-07 | Phase 3 | Pending |
-| ENG-01 | Phase 1 | Pending |
-| ENG-02 | Phase 1 | Pending |
-| ENG-03 | Phase 1 | Pending |
-| ENG-04 | Phase 1 | Pending |
+| ENG-01 | Phase 1 | Complete |
+| ENG-02 | Phase 1 | Complete |
+| ENG-03 | Phase 1 | Complete |
+| ENG-04 | Phase 1 | Complete |
 | LOG-01 | Phase 1 | Complete |
-| LOG-02 | Phase 1 | Pending |
-| LOG-03 | Phase 1 | Pending |
+| LOG-02 | Phase 1 | Complete |
+| LOG-03 | Phase 1 | Complete |
 | PS-01 | Phase 1 | Complete |
 | PS-02 | Phase 1 | Complete |
 
