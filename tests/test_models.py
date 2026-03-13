@@ -35,9 +35,9 @@ class TestEngineConfig:
 class TestOutcome:
     def test_outcome_enum(self) -> None:
         members = list(Outcome)
-        assert len(members) == 5
+        assert len(members) == 6
         names = {m.name for m in members}
-        assert names == {"SUCCESS", "FAILURE", "APPROVE", "CONDITIONAL", "FAIL"}
+        assert names == {"SUCCESS", "FAILURE", "APPROVE", "CONDITIONAL", "FAIL", "TRIAGE_ROUTE"}
 
 
 class TestJobStateFields:
@@ -46,6 +46,20 @@ class TestJobStateFields:
         job = JobState(job_id="fbr-field-test")
         assert hasattr(job, "fbr_return_pending")
         assert job.fbr_return_pending is False
+
+    def test_triage_results_default(self) -> None:
+        """TR-01: JobState has triage_results field, defaults to empty dict."""
+        job = JobState(job_id="triage-field-test")
+        assert job.triage_results == {}
+
+    def test_triage_rewind_target_default(self) -> None:
+        """TR-01: JobState has triage_rewind_target field, defaults to None."""
+        job = JobState(job_id="triage-field-test")
+        assert job.triage_rewind_target is None
+
+    def test_triage_route_outcome_exists(self) -> None:
+        """TR-01: Outcome.TRIAGE_ROUTE exists."""
+        assert hasattr(Outcome, "TRIAGE_ROUTE")
 
 
 class TestNodeType:

@@ -9,7 +9,7 @@ import random
 from abc import ABC, abstractmethod
 
 from workflow_engine.models import JobState, NodeType, Outcome
-from workflow_engine.transitions import HAPPY_PATH, NODE_TYPES
+from workflow_engine.transitions import HAPPY_PATH, NODE_TYPES, TRIAGE_NODES
 
 
 class Node(ABC):
@@ -47,6 +47,43 @@ class StubReviewNode(Node):
         if self._rng is None:
             return Outcome.APPROVE
         return self._rng.choice([Outcome.APPROVE, Outcome.CONDITIONAL, Outcome.FAIL])
+
+
+class DiagnosticStubNode(Node):
+    """Stub for triage diagnostic nodes (T3-T6). Always returns SUCCESS, stores verdict in job.triage_results."""
+
+    def __init__(self, node_name: str, description: str, *, rng: random.Random | None = None) -> None:
+        self.node_name = node_name
+        self.__doc__ = description
+        self._rng = rng
+
+    def execute(self, job: JobState) -> Outcome:
+        if self._rng is None:
+            verdict = "clean"
+        else:
+            verdict = self._rng.choice(["clean", "fault"])
+        job.triage_results[self.node_name] = verdict
+        return Outcome.SUCCESS
+
+
+class TriageRouterNode(Node):
+    """T7: Reads triage_results, sets triage_rewind_target to earliest fault, returns TRIAGE_ROUTE."""
+
+    # Priority order: T3 (BRD) before T4 (FSD) before T5 (code) before T6 (proofmark).
+    FAULT_ROUTING: list[tuple[str, str]] = [
+        ("Triage_CheckBrd",       "WriteBrd"),
+        ("Triage_CheckFsd",       "WriteFsd"),
+        ("Triage_CheckCode",      "BuildJobArtifacts"),
+        ("Triage_CheckProofmark", "BuildProofmarkConfig"),
+    ]
+
+    def execute(self, job: JobState) -> Outcome:
+        for check_node, rewind_target in self.FAULT_ROUTING:
+            if job.triage_results.get(check_node) == "fault":
+                job.triage_rewind_target = rewind_target
+                return Outcome.TRIAGE_ROUTE
+        job.triage_rewind_target = "DEAD_LETTER"
+        return Outcome.TRIAGE_ROUTE
 
 
 # Descriptions for each node, referencing stage and blueprint from the transition table.
@@ -89,7 +126,6 @@ _RESPONSE_NODE_DESCRIPTIONS: dict[str, str] = {
     "BuildJobArtifactsResponse": "builder: Revises job artifacts based on reviewer feedback",
     "BuildProofmarkResponse":    "proofmark-builder: Revises proofmark config based on reviewer feedback",
     "BuildUnitTestsResponse":    "test-writer: Revises unit tests based on reviewer feedback",
-    "TriageProofmarkFailures":   "triage: Analyzes proofmark failures and routes to appropriate fix",
 }
 
 
@@ -109,4 +145,25 @@ def create_node_registry(rng: random.Random | None = None) -> dict[str, Node]:
             registry[node_name] = StubWorkNode(node_name, description, rng=rng)
     for node_name, description in _RESPONSE_NODE_DESCRIPTIONS.items():
         registry[node_name] = StubWorkNode(node_name, description, rng=rng)
+
+    # Triage pipeline nodes.
+    _TRIAGE_DESCRIPTIONS: dict[str, str] = {
+        "Triage_ProfileData":    "data-profiler: Profiles failed row data for triage context",
+        "Triage_AnalyzeOgFlow":  "og-flow-analyst: Analyzes original data flow for triage context",
+        "Triage_CheckBrd":       "triage-brd-checker: Checks BRD against data flow findings",
+        "Triage_CheckFsd":       "triage-fsd-checker: Checks FSD against data flow findings",
+        "Triage_CheckCode":      "triage-code-checker: Checks code artifacts against data flow findings",
+        "Triage_CheckProofmark": "triage-pm-checker: Checks proofmark config against data profile",
+        "Triage_Route":          "triage-router: Routes to earliest fault rewind target",
+    }
+    # T1-T2: context gathering (StubWorkNode, deterministic without RNG)
+    for t_node in TRIAGE_NODES[:2]:
+        registry[t_node] = StubWorkNode(t_node, _TRIAGE_DESCRIPTIONS[t_node])
+    # T3-T6: diagnostic stubs
+    for t_node in TRIAGE_NODES[2:6]:
+        registry[t_node] = DiagnosticStubNode(t_node, _TRIAGE_DESCRIPTIONS[t_node], rng=rng)
+    # T7: router
+    registry["Triage_Route"] = TriageRouterNode()
+    registry["Triage_Route"].__doc__ = _TRIAGE_DESCRIPTIONS["Triage_Route"]
+
     return registry

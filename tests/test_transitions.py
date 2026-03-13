@@ -6,6 +6,7 @@ from workflow_engine.transitions import (
     HAPPY_PATH,
     NODE_TYPES,
     REVIEW_ROUTING,
+    TRIAGE_NODES,
     TRANSITION_TABLE,
     validate_transition_table,
 )
@@ -203,3 +204,36 @@ class TestFBRGauntlet:
         for gate in _EXPECTED_FBR_ROUTING:
             key = (gate, Outcome.APPROVE)
             assert key in TRANSITION_TABLE, f"APPROVE edge missing for {gate} (regression)"
+
+
+class TestTriage:
+    """Tests for triage pipeline wiring (TR-01 through TR-03)."""
+
+    def test_proofmark_failure_enters_triage(self) -> None:
+        """ExecuteProofmark FAILURE routes to Triage_ProfileData."""
+        key = ("ExecuteProofmark", Outcome.FAILURE)
+        assert key in TRANSITION_TABLE
+        assert TRANSITION_TABLE[key] == "Triage_ProfileData"
+
+    def test_triage_advance_edges(self) -> None:
+        """T1-T6 SUCCESS edges advance to next triage node."""
+        for i in range(6):
+            key = (TRIAGE_NODES[i], Outcome.SUCCESS)
+            assert key in TRANSITION_TABLE, f"Missing SUCCESS edge for {TRIAGE_NODES[i]}"
+            assert TRANSITION_TABLE[key] == TRIAGE_NODES[i + 1]
+
+    def test_triage_route_no_table_entry(self) -> None:
+        """Triage_Route TRIAGE_ROUTE is NOT in TRANSITION_TABLE (engine handles it)."""
+        key = ("Triage_Route", Outcome.TRIAGE_ROUTE)
+        assert key not in TRANSITION_TABLE
+
+    def test_triage_proofmark_failures_placeholder_removed(self) -> None:
+        """TriageProofmarkFailures placeholder is retired."""
+        key = ("TriageProofmarkFailures", Outcome.SUCCESS)
+        assert key not in TRANSITION_TABLE
+
+    def test_triage_nodes_in_node_types(self) -> None:
+        """All 7 triage nodes have NodeType.WORK in NODE_TYPES."""
+        for node in TRIAGE_NODES:
+            assert node in NODE_TYPES, f"{node} not in NODE_TYPES"
+            assert NODE_TYPES[node] == NodeType.WORK, f"{node} should be WORK"

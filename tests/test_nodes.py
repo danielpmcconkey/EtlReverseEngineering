@@ -3,7 +3,14 @@
 import random
 
 from workflow_engine.models import JobState, Outcome
-from workflow_engine.nodes import Node, StubReviewNode, StubWorkNode, create_node_registry
+from workflow_engine.nodes import (
+    DiagnosticStubNode,
+    Node,
+    StubReviewNode,
+    StubWorkNode,
+    TriageRouterNode,
+    create_node_registry,
+)
 from workflow_engine.transitions import HAPPY_PATH, NODE_TYPES
 
 
@@ -86,7 +93,6 @@ _EXPECTED_RESPONSE_NODES = {
     "BuildJobArtifactsResponse",
     "BuildProofmarkResponse",
     "BuildUnitTestsResponse",
-    "TriageProofmarkFailures",
 }
 
 
@@ -147,6 +153,95 @@ def test_response_nodes_rng_mode_returns_success_or_failure() -> None:
 
 
 def test_registry_total_size() -> None:
-    """Registry has 27 happy-path + 7 response = 34 nodes total."""
+    """Registry has 27 happy-path + 6 response + 7 triage = 40 nodes total."""
     registry = create_node_registry(rng=None)
-    assert len(registry) == 34, f"Expected 34 nodes, got {len(registry)}"
+    assert len(registry) == 40, f"Expected 40 nodes, got {len(registry)}"
+
+
+class TestTriageNodes:
+    """Tests for triage node stubs and router (TR-02 through TR-06)."""
+
+    def test_t1_t2_context_gathering(self) -> None:
+        """TR-02: T1 and T2 are StubWorkNode instances, return SUCCESS."""
+        registry = create_node_registry()
+        for name in ("Triage_ProfileData", "Triage_AnalyzeOgFlow"):
+            node = registry[name]
+            assert isinstance(node, StubWorkNode), f"{name} should be StubWorkNode"
+            job = JobState(job_id="t1t2-test")
+            assert node.execute(job) == Outcome.SUCCESS
+
+    def test_diagnostic_stubs_record_verdict(self) -> None:
+        """TR-03: T3-T6 return SUCCESS but store verdict in job.triage_results."""
+        check_nodes = [
+            "Triage_CheckBrd", "Triage_CheckFsd",
+            "Triage_CheckCode", "Triage_CheckProofmark",
+        ]
+        registry = create_node_registry()
+        for name in check_nodes:
+            node = registry[name]
+            assert isinstance(node, DiagnosticStubNode), f"{name} should be DiagnosticStubNode"
+            job = JobState(job_id="diag-test")
+            result = node.execute(job)
+            assert result == Outcome.SUCCESS
+            assert name in job.triage_results
+
+    def test_diagnostic_stubs_deterministic_clean(self) -> None:
+        """Without RNG, T3-T6 store 'clean'."""
+        for name in ("Triage_CheckBrd", "Triage_CheckFsd", "Triage_CheckCode", "Triage_CheckProofmark"):
+            node = DiagnosticStubNode(name, "test", rng=None)
+            job = JobState(job_id="clean-test")
+            node.execute(job)
+            assert job.triage_results[name] == "clean"
+
+    def test_diagnostic_stubs_rng_varies(self) -> None:
+        """With seeded RNG, T3-T6 produce both 'clean' and 'fault' across calls."""
+        rng = random.Random(42)
+        node = DiagnosticStubNode("Triage_CheckBrd", "test", rng=rng)
+        verdicts = set()
+        for i in range(20):
+            job = JobState(job_id=f"rng-test-{i}")
+            node.execute(job)
+            verdicts.add(job.triage_results["Triage_CheckBrd"])
+        assert verdicts == {"clean", "fault"}, f"Expected both clean and fault, got {verdicts}"
+
+    def test_triage_router_earliest_fault(self) -> None:
+        """TR-04: T3=fault, T5=fault -> routes to WriteBrd (earliest)."""
+        node = TriageRouterNode()
+        job = JobState(job_id="router-test")
+        job.triage_results = {
+            "Triage_CheckBrd": "fault",
+            "Triage_CheckFsd": "clean",
+            "Triage_CheckCode": "fault",
+            "Triage_CheckProofmark": "clean",
+        }
+        result = node.execute(job)
+        assert result == Outcome.TRIAGE_ROUTE
+        assert job.triage_rewind_target == "WriteBrd"
+
+    def test_triage_router_no_faults(self) -> None:
+        """TR-06: All clean -> DEAD_LETTER."""
+        node = TriageRouterNode()
+        job = JobState(job_id="no-fault-test")
+        job.triage_results = {
+            "Triage_CheckBrd": "clean",
+            "Triage_CheckFsd": "clean",
+            "Triage_CheckCode": "clean",
+            "Triage_CheckProofmark": "clean",
+        }
+        result = node.execute(job)
+        assert result == Outcome.TRIAGE_ROUTE
+        assert job.triage_rewind_target == "DEAD_LETTER"
+
+    def test_triage_router_single_fault_t6(self) -> None:
+        """Only T6=fault -> routes to BuildProofmarkConfig."""
+        node = TriageRouterNode()
+        job = JobState(job_id="t6-fault-test")
+        job.triage_results = {
+            "Triage_CheckBrd": "clean",
+            "Triage_CheckFsd": "clean",
+            "Triage_CheckCode": "clean",
+            "Triage_CheckProofmark": "fault",
+        }
+        result = node.execute(job)
+        assert result == Outcome.TRIAGE_ROUTE
+        assert job.triage_rewind_target == "BuildProofmarkConfig"

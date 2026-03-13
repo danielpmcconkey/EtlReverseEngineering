@@ -67,9 +67,7 @@ REVIEW_ROUTING: dict[str, tuple[str, str]] = {
 }
 
 # All response node names (NodeType.WORK -- they write/build, not review).
-_RESPONSE_NODES: set[str] = {response for response, _ in REVIEW_ROUTING.values()} | {
-    "TriageProofmarkFailures",
-}
+_RESPONSE_NODES: set[str] = {response for response, _ in REVIEW_ROUTING.values()}
 
 NODE_TYPES: dict[str, NodeType] = {
     node: NodeType.REVIEW if node in _REVIEW_NODES else NodeType.WORK
@@ -118,8 +116,29 @@ for _fbr_gate, (_response_node, _rewind_target) in FBR_ROUTING.items():
     TRANSITION_TABLE[(_fbr_gate, Outcome.CONDITIONAL)] = _response_node
     TRANSITION_TABLE[(_fbr_gate, Outcome.FAIL)] = _rewind_target
 
-# TriageProofmarkFailures placeholder: SUCCESS routes back to ExecuteProofmark (Phase 3 will own this).
-TRANSITION_TABLE[("TriageProofmarkFailures", Outcome.SUCCESS)] = "ExecuteProofmark"
+# Triage pipeline: 7-step diagnostic sub-pipeline entered on ExecuteProofmark FAILURE.
+TRIAGE_NODES: list[str] = [
+    "Triage_ProfileData",       # T1 - context gathering
+    "Triage_AnalyzeOgFlow",     # T2 - context gathering
+    "Triage_CheckBrd",          # T3 - diagnostic
+    "Triage_CheckFsd",          # T4 - diagnostic
+    "Triage_CheckCode",         # T5 - diagnostic
+    "Triage_CheckProofmark",    # T6 - diagnostic
+    "Triage_Route",             # T7 - router (returns TRIAGE_ROUTE, engine handles directly)
+]
+
+# All 7 triage nodes are WORK type.
+for _triage_node in TRIAGE_NODES:
+    NODE_TYPES[_triage_node] = NodeType.WORK
+
+# ExecuteProofmark FAILURE enters triage.
+TRANSITION_TABLE[("ExecuteProofmark", Outcome.FAILURE)] = "Triage_ProfileData"
+
+# T1-T6 SUCCESS advance to next triage node.
+for _i in range(len(TRIAGE_NODES) - 1):
+    TRANSITION_TABLE[(TRIAGE_NODES[_i], Outcome.SUCCESS)] = TRIAGE_NODES[_i + 1]
+
+# Note: Triage_Route has NO TRANSITION_TABLE entry -- engine handles TRIAGE_ROUTE directly.
 
 
 def validate_transition_table() -> list[str]:

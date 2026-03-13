@@ -506,3 +506,106 @@ class TestFBRGauntlet:
         assert nodes_visited[last_fbr_fail_idx + 1] == "WriteBrd"
         assert job.main_retry_count == 1
         assert job.status == "COMPLETE"
+
+
+class TestTriage:
+    """TR-04 through TR-07: Triage engine logic tests."""
+
+    def _make_engine(self, **kwargs) -> Engine:
+        defaults = dict(n_jobs=1, max_main_retries=5, max_conditional_per_node=3, seed=None)
+        defaults.update(kwargs)
+        return Engine(EngineConfig(**defaults))
+
+    def test_t7_routes_to_earliest_fault(self) -> None:
+        """TR-04/TR-05: Triage routes to earliest fault (WriteBrd for T3=fault)."""
+        cap = _capture_logs()
+        engine = self._make_engine()
+        job = JobState(job_id="tr04-test")
+        job.current_node = "Triage_Route"
+        job.triage_results = {
+            "Triage_CheckBrd": "fault",
+            "Triage_CheckCode": "fault",
+        }
+        result = engine.run_job(job)
+
+        assert result.main_retry_count == 1
+        transitions = [e for e in cap if e.get("event") == "transition"]
+        assert transitions[0]["node"] == "Triage_Route"
+        assert transitions[0]["outcome"] == "TRIAGE_ROUTE"
+        assert transitions[0]["next_node"] == "WriteBrd"
+        assert result.status == "COMPLETE"
+
+    def test_multiple_faults_route_to_earliest(self) -> None:
+        """TR-05: T4=fault, T6=fault -> routes to WriteFsd (T4 earlier than T6)."""
+        cap = _capture_logs()
+        engine = self._make_engine()
+        job = JobState(job_id="tr05-test")
+        job.current_node = "Triage_Route"
+        job.triage_results = {
+            "Triage_CheckBrd": "clean",
+            "Triage_CheckFsd": "fault",
+            "Triage_CheckCode": "clean",
+            "Triage_CheckProofmark": "fault",
+        }
+        result = engine.run_job(job)
+
+        transitions = [e for e in cap if e.get("event") == "transition"]
+        assert transitions[0]["next_node"] == "WriteFsd"
+        assert result.main_retry_count == 1
+        assert result.status == "COMPLETE"
+
+    def test_no_faults_dead_letter(self) -> None:
+        """TR-06: No faults -> DEAD_LETTER."""
+        _capture_logs()
+        engine = self._make_engine()
+        job = JobState(job_id="tr06-test")
+        job.current_node = "Triage_Route"
+        job.triage_results = {
+            "Triage_CheckBrd": "clean",
+            "Triage_CheckFsd": "clean",
+            "Triage_CheckCode": "clean",
+            "Triage_CheckProofmark": "clean",
+        }
+        result = engine.run_job(job)
+
+        assert result.status == "DEAD_LETTER"
+        assert result.main_retry_count == 1
+
+    def test_triage_increments_main_retry(self) -> None:
+        """TR-07: Triage routing increments main_retry_count."""
+        _capture_logs()
+        engine = self._make_engine()
+        job = JobState(job_id="tr07-test")
+        job.current_node = "Triage_Route"
+        job.triage_results = {"Triage_CheckBrd": "fault"}
+        result = engine.run_job(job)
+
+        assert result.main_retry_count == 1
+        assert result.status == "COMPLETE"
+
+    def test_triage_dead_letter_on_max_retries(self) -> None:
+        """Triage with main_retry at N-1 -> DEAD_LETTER."""
+        _capture_logs()
+        engine = self._make_engine(max_main_retries=2)
+        job = JobState(job_id="triage-dl-test")
+        job.current_node = "Triage_Route"
+        job.main_retry_count = 1
+        job.triage_results = {"Triage_CheckFsd": "fault"}
+        result = engine.run_job(job)
+
+        assert result.status == "DEAD_LETTER"
+        assert result.main_retry_count == 2
+
+    def test_triage_results_cleared_on_entry(self) -> None:
+        """triage_results cleared when entering Triage_ProfileData."""
+        _capture_logs()
+        engine = self._make_engine()
+        engine._registry["ExecuteProofmark"] = ScriptedNode(
+            [Outcome.FAILURE], default=Outcome.SUCCESS
+        )
+        job = JobState(job_id="triage-clear-test")
+        job.triage_results = {"Triage_CheckBrd": "stale_fault"}
+        result = engine.run_job(job)
+
+        # Deterministic T3-T6 -> all clean -> T7 routes to DEAD_LETTER
+        assert result.status == "DEAD_LETTER"

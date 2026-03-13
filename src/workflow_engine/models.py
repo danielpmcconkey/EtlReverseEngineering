@@ -17,6 +17,7 @@ class Outcome(Enum):
     APPROVE = auto()
     CONDITIONAL = auto()
     FAIL = auto()
+    TRIAGE_ROUTE = auto()
 
 
 class NodeType(Enum):
@@ -40,6 +41,8 @@ class JobState:
     conditional_counts: dict[str, int] = field(default_factory=dict)
     last_rejection_reason: str | None = None
     fbr_return_pending: bool = False
+    triage_results: dict[str, str] = field(default_factory=dict)
+    triage_rewind_target: str | None = None
 
 
 @dataclass

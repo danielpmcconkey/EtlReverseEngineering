@@ -110,6 +110,10 @@ class Engine:
         log = self._log.bind(job_id=job.job_id)
 
         while job.status == "RUNNING":
+            # Clear triage_results on entry to Triage_ProfileData
+            if job.current_node == "Triage_ProfileData":
+                job.triage_results = {}
+
             node = self._registry[job.current_node]
             raw_outcome = node.execute(job)
             outcome = self._resolve_outcome(job, job.current_node, raw_outcome)
@@ -123,6 +127,36 @@ class Engine:
                     last_rejection=job.last_rejection_reason,
                 )
                 break
+
+            # TRIAGE_ROUTE: engine handles routing directly (no TRANSITION_TABLE entry)
+            if outcome == Outcome.TRIAGE_ROUTE:
+                rewind_target = job.triage_rewind_target
+                job.main_retry_count += 1
+                job.last_rejection_reason = f"Triage routed to {rewind_target}"
+
+                if rewind_target == "DEAD_LETTER" or job.main_retry_count >= self._config.max_main_retries:
+                    job.status = "DEAD_LETTER"
+                    log.info(
+                        "dead_letter",
+                        node=job.current_node,
+                        outcome=outcome.name,
+                        main_retry=job.main_retry_count,
+                        last_rejection=job.last_rejection_reason,
+                    )
+                    break
+
+                self._reset_downstream_conditionals(job, rewind_target)
+                log.info(
+                    "transition",
+                    node=job.current_node,
+                    outcome=outcome.name,
+                    next_node=rewind_target,
+                    main_retry=job.main_retry_count,
+                    conditional_counts=dict(job.conditional_counts),
+                    last_rejection=job.last_rejection_reason,
+                )
+                job.current_node = rewind_target
+                continue
 
             key = (job.current_node, outcome)
             if key not in TRANSITION_TABLE:
