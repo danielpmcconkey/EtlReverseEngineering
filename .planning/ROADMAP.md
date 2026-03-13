@@ -44,7 +44,7 @@ Plans:
   3. The Mth consecutive Conditional at the same review node auto-promotes to Fail (incrementing the main retry counter and rewinding)
   4. A job reaching N total Fails is sent to DEAD_LETTER instead of rewinding again
   5. Per-node conditional counters reset to 0 on success at that node AND on rewind past that node
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 02-01-PLAN.md — Data layer: REVIEW_ROUTING dict, transition table expansion with Conditional/Fail/response edges, 7 response node stubs
@@ -75,5 +75,5 @@ Phases execute in numeric order: 1 -> 2 -> 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation and Happy Path Engine | 2/2 | Complete   | 2026-03-13 |
-| 2. Review Branching and Counter Mechanics | 0/2 | Not started | - |
+| 2. Review Branching and Counter Mechanics | 1/2 | In Progress|  |
 | 3. FBR Gauntlet, Triage, and Validation Run | 0/3 | Not started | - |

@@ -28,11 +28,11 @@ Requirements for v0.1 release. Each maps to roadmap phases.
 
 ### Review Branching
 
-- [ ] **RB-01**: Approve routes to next node in happy path
-- [ ] **RB-02**: Conditional routes to response node -> same reviewer (no downstream invalidation)
-- [ ] **RB-03**: Fail rewinds to original write node and replays the full pipeline forward from there
+- [x] **RB-01**: Approve routes to next node in happy path
+- [x] **RB-02**: Conditional routes to response node -> same reviewer (no downstream invalidation)
+- [x] **RB-03**: Fail rewinds to original write node and replays the full pipeline forward from there
 - [ ] **RB-04**: Writer/response nodes receive only the most recent rejection reason -- no errata accumulation
-- [ ] **RB-05**: 7 response nodes exist (WriteBrdResponse, WriteBddResponse, WriteFsdResponse, BuildJobArtifactsResponse, BuildProofmarkResponse, BuildUnitTestsResponse, TriageProofmarkFailures)
+- [x] **RB-05**: 7 response nodes exist (WriteBrdResponse, WriteBddResponse, WriteFsdResponse, BuildJobArtifactsResponse, BuildProofmarkResponse, BuildUnitTestsResponse, TriageProofmarkFailures)
 
 ### FBR Gauntlet
 
@@ -115,11 +115,11 @@ Requirements for v0.1 release. Each maps to roadmap phases.
 | HP-02 | Phase 1 | Complete |
 | HP-03 | Phase 1 | Complete |
 | HP-04 | Phase 1 | Complete |
-| RB-01 | Phase 2 | Pending |
-| RB-02 | Phase 2 | Pending |
-| RB-03 | Phase 2 | Pending |
+| RB-01 | Phase 2 | Complete |
+| RB-02 | Phase 2 | Complete |
+| RB-03 | Phase 2 | Complete |
 | RB-04 | Phase 2 | Pending |
-| RB-05 | Phase 2 | Pending |
+| RB-05 | Phase 2 | Complete |
 | FBR-01 | Phase 3 | Pending |
 | FBR-02 | Phase 3 | Pending |
 | FBR-03 | Phase 3 | Pending |

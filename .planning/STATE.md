@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-03-13T16:52:40.328Z"
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-03-13T20:07:41.363Z"
 last_activity: 2026-03-13 -- Completed 01-02 (engine main loop and integration tests)
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 4
+  completed_plans: 3
   percent: 100
 ---
 
@@ -52,6 +52,7 @@ Progress: [██████████] 100% (Phase 1)
 *Updated after each plan completion*
 | Phase 01 P01 | 3min | 2 tasks | 11 files |
 | Phase 01 P02 | 3min | 2 tasks | 3 files |
+| Phase 02-review-branching-and-counter-mechanics P01 | 2min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -65,6 +66,9 @@ Recent decisions affecting current work:
 - [Phase 01]: Node stubs use optional RNG: None for deterministic happy path, seeded Random for simulation
 - [Phase 01]: configure_logging() in run() not __init__ for test-controllable logging
 - [Phase 01]: ValueError on missing transition keys (fail loud, not silent)
+- [Phase 02-01]: REVIEW_ROUTING typed as dict[str, tuple[str, str]] -- flat tuples cleaner than nested dicts
+- [Phase 02-01]: Response nodes NOT added to HAPPY_PATH -- off the happy path by design
+- [Phase 02-01]: TriageProofmarkFailures gets placeholder SUCCESS->ExecuteProofmark edge; full triage is Phase 3 scope
 
 ### Pending Todos
 
@@ -76,6 +80,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-13T16:48:30.000Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-03-13T20:07:41.360Z
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None
