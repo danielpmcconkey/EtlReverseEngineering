@@ -81,10 +81,23 @@ _NODE_DESCRIPTIONS: dict[str, str] = {
 }
 
 
-def create_node_registry(rng: random.Random | None = None) -> dict[str, Node]:
-    """Create a stub node for every node in HAPPY_PATH.
+# Response node descriptions (WORK type -- write/build, never review).
+_RESPONSE_NODE_DESCRIPTIONS: dict[str, str] = {
+    "WriteBrdResponse":          "brd-writer: Revises BRD based on reviewer feedback",
+    "WriteBddResponse":          "bdd-writer: Revises BDD test architecture based on reviewer feedback",
+    "WriteFsdResponse":          "fsd-writer: Revises FSD based on reviewer feedback",
+    "BuildJobArtifactsResponse": "builder: Revises job artifacts based on reviewer feedback",
+    "BuildProofmarkResponse":    "proofmark-builder: Revises proofmark config based on reviewer feedback",
+    "BuildUnitTestsResponse":    "test-writer: Revises unit tests based on reviewer feedback",
+    "TriageProofmarkFailures":   "triage: Analyzes proofmark failures and routes to appropriate fix",
+}
 
-    Uses NODE_TYPES to pick StubWorkNode vs StubReviewNode.
+
+def create_node_registry(rng: random.Random | None = None) -> dict[str, Node]:
+    """Create a stub node for every node in HAPPY_PATH plus all response nodes.
+
+    Uses NODE_TYPES to pick StubWorkNode vs StubReviewNode for happy-path nodes.
+    Response nodes are always StubWorkNode (they write/build, never review).
     When rng is None, all stubs run deterministically (happy path).
     """
     registry: dict[str, Node] = {}
@@ -94,4 +107,6 @@ def create_node_registry(rng: random.Random | None = None) -> dict[str, Node]:
             registry[node_name] = StubReviewNode(node_name, description, rng=rng)
         else:
             registry[node_name] = StubWorkNode(node_name, description, rng=rng)
+    for node_name, description in _RESPONSE_NODE_DESCRIPTIONS.items():
+        registry[node_name] = StubWorkNode(node_name, description, rng=rng)
     return registry

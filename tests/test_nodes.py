@@ -77,3 +77,76 @@ class TestNodeRegistry:
                 all_outcomes.add(node.execute(job))
         # Should have more than one unique outcome across all nodes and calls
         assert len(all_outcomes) > 1
+
+
+_EXPECTED_RESPONSE_NODES = {
+    "WriteBrdResponse",
+    "WriteBddResponse",
+    "WriteFsdResponse",
+    "BuildJobArtifactsResponse",
+    "BuildProofmarkResponse",
+    "BuildUnitTestsResponse",
+    "TriageProofmarkFailures",
+}
+
+
+def test_response_nodes_exist() -> None:
+    """create_node_registry() returns entries for all 7 response nodes (RB-05)."""
+    registry = create_node_registry(rng=None)
+    for node_name in _EXPECTED_RESPONSE_NODES:
+        assert node_name in registry, f"Response node {node_name} missing from registry"
+
+
+def test_response_nodes_are_work_type() -> None:
+    """All 7 response nodes are StubWorkNode instances, not StubReviewNode."""
+    registry = create_node_registry(rng=None)
+    for node_name in _EXPECTED_RESPONSE_NODES:
+        node = registry[node_name]
+        assert isinstance(node, StubWorkNode), (
+            f"{node_name} should be StubWorkNode, got {type(node).__name__}"
+        )
+        assert not isinstance(node, StubReviewNode), (
+            f"{node_name} must not be StubReviewNode"
+        )
+
+
+def test_response_nodes_have_descriptions() -> None:
+    """All 7 response nodes have non-empty descriptions."""
+    registry = create_node_registry(rng=None)
+    for node_name in _EXPECTED_RESPONSE_NODES:
+        node = registry[node_name]
+        assert node.__doc__, f"Response node {node_name} has no docstring"
+        assert len(node.__doc__.strip()) > 0, f"Response node {node_name} has empty docstring"
+
+
+def test_response_nodes_deterministic_returns_success() -> None:
+    """In deterministic mode (rng=None), all response nodes return SUCCESS."""
+    registry = create_node_registry(rng=None)
+    job = JobState(job_id="test")
+    for node_name in _EXPECTED_RESPONSE_NODES:
+        node = registry[node_name]
+        for _ in range(5):
+            result = node.execute(job)
+            assert result == Outcome.SUCCESS, (
+                f"{node_name} should return SUCCESS in deterministic mode, got {result}"
+            )
+
+
+def test_response_nodes_rng_mode_returns_success_or_failure() -> None:
+    """In RNG mode, response nodes return only SUCCESS or FAILURE (never APPROVE/CONDITIONAL/FAIL)."""
+    rng = random.Random(99)
+    registry = create_node_registry(rng=rng)
+    job = JobState(job_id="test")
+    valid_outcomes = {Outcome.SUCCESS, Outcome.FAILURE}
+    for node_name in _EXPECTED_RESPONSE_NODES:
+        node = registry[node_name]
+        outcomes = {node.execute(job) for _ in range(50)}
+        assert outcomes <= valid_outcomes, (
+            f"{node_name} returned invalid outcomes: {outcomes - valid_outcomes}"
+        )
+
+
+def test_registry_total_size() -> None:
+    """Registry has 27 happy-path + 7 response = 34 nodes total."""
+    registry = create_node_registry(rng=None)
+    assert len(registry) == 34, f"Expected 34 nodes, got {len(registry)}"
