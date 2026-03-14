@@ -1,12 +1,14 @@
 """Node abstractions and stub implementations for the workflow engine.
 
-Provides: Node ABC, StubWorkNode, StubReviewNode, create_node_registry.
+Provides: Node ABC, StubWorkNode, StubReviewNode, create_node_registry,
+create_agent_registry.
 """
 
 from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 from workflow_engine.models import JobState, NodeType, Outcome
 from workflow_engine.transitions import FBR_ROUTING, HAPPY_PATH, NODE_TYPES, REVIEW_ROUTING, TRIAGE_NODES
@@ -175,5 +177,59 @@ def create_node_registry(rng: random.Random | None = None) -> dict[str, Node]:
     # T7: router
     registry["Triage_Route"] = TriageRouterNode()
     registry["Triage_Route"].__doc__ = _TRIAGE_DESCRIPTIONS["Triage_Route"]
+
+    return registry
+
+
+def _blueprint_name(description: str) -> str:
+    """Extract blueprint name from a node description string (e.g., 'og-locator: ...' -> 'og-locator')."""
+    return description.split(":")[0].strip()
+
+
+def create_agent_registry(
+    blueprints_dir: Path,
+    jobs_dir: Path,
+    *,
+    model: str = "sonnet",
+    budget: float = 0.50,
+) -> dict[str, Node]:
+    """Create an AgentNode for every node in the workflow.
+
+    Each node maps to a blueprint file at blueprints_dir/{blueprint-name}.md.
+    Falls back to TriageRouterNode for Triage_Route (deterministic routing, no agent needed).
+    """
+    from workflow_engine.agent_node import AgentNode
+
+    all_descriptions = {**_NODE_DESCRIPTIONS, **_RESPONSE_NODE_DESCRIPTIONS}
+
+    # Triage descriptions (duplicated from create_node_registry — same source of truth).
+    triage_descriptions: dict[str, str] = {
+        "Triage_ProfileData":    "data-profiler: Profiles failed row data for triage context",
+        "Triage_AnalyzeOgFlow":  "og-flow-analyst: Analyzes original data flow for triage context",
+        "Triage_CheckBrd":       "triage-brd-checker: Checks BRD against data flow findings",
+        "Triage_CheckFsd":       "triage-fsd-checker: Checks FSD against data flow findings",
+        "Triage_CheckCode":      "triage-code-checker: Checks code artifacts against data flow findings",
+        "Triage_CheckProofmark": "triage-pm-checker: Checks proofmark config against data profile",
+        "Triage_Route":          "triage-router: Routes to earliest fault rewind target",
+    }
+    all_descriptions.update(triage_descriptions)
+
+    registry: dict[str, Node] = {}
+    for node_name, description in all_descriptions.items():
+        # Triage_Route stays deterministic — it's pure routing logic, not agent work.
+        if node_name == "Triage_Route":
+            registry[node_name] = TriageRouterNode()
+            registry[node_name].__doc__ = description
+            continue
+
+        bp_name = _blueprint_name(description)
+        bp_path = blueprints_dir / f"{bp_name}.md"
+        registry[node_name] = AgentNode(
+            node_name=node_name,
+            blueprint_path=bp_path,
+            jobs_dir=jobs_dir,
+            model=model,
+            budget=budget,
+        )
 
     return registry

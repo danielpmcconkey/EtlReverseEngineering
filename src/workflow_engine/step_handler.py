@@ -8,6 +8,7 @@ next node → save state → enqueue next (or mark terminal).
 from __future__ import annotations
 
 import random
+from pathlib import Path
 
 import structlog
 
@@ -19,7 +20,7 @@ from workflow_engine.db import (
     save_job_state,
 )
 from workflow_engine.models import EngineConfig, JobState, Outcome
-from workflow_engine.nodes import create_node_registry
+from workflow_engine.nodes import create_agent_registry, create_node_registry
 from workflow_engine.transitions import (
     FBR_ROUTING,
     HAPPY_PATH,
@@ -36,8 +37,16 @@ class StepHandler:
 
     def __init__(self, config: EngineConfig) -> None:
         self._config = config
-        rng = random.Random(config.seed) if config.seed is not None else None
-        self._registry = create_node_registry(rng)
+        if config.use_agents:
+            self._registry = create_agent_registry(
+                blueprints_dir=Path(config.blueprints_dir),
+                jobs_dir=Path(config.jobs_dir),
+                model=config.agent_model,
+                budget=config.agent_budget,
+            )
+        else:
+            rng = random.Random(config.seed) if config.seed is not None else None
+            self._registry = create_node_registry(rng)
         self._log = structlog.get_logger()
 
     def __call__(self, task: dict) -> None:

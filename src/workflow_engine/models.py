@@ -49,10 +49,15 @@ class JobState:
 class EngineConfig:
     """Configuration for the workflow engine.
 
-    Controls concurrency, retry limits, and RNG seeding.
+    Controls concurrency, retry limits, RNG seeding, and agent invocation.
     """
 
     n_jobs: int = 5
     max_main_retries: int = 5
     max_conditional_per_node: int = 3
     seed: int | None = None
+    use_agents: bool = False
+    agent_model: str = "sonnet"
+    agent_budget: float = 0.50
+    blueprints_dir: str = ""
+    jobs_dir: str = ""
