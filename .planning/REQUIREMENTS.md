@@ -66,28 +66,28 @@ Requirements for v0.2 release. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TQ-01 | — | Pending |
-| TQ-02 | — | Pending |
-| TQ-03 | — | Pending |
-| TQ-04 | — | Pending |
-| JS-01 | — | Pending |
-| JS-02 | — | Pending |
-| JS-03 | — | Pending |
-| WK-01 | — | Pending |
-| WK-02 | — | Pending |
-| WK-03 | — | Pending |
-| WK-04 | — | Pending |
-| SM-10 | — | Pending |
-| SM-11 | — | Pending |
-| TS-01 | — | Pending |
-| TS-02 | — | Pending |
-| TS-03 | — | Pending |
+| TQ-01 | Phase 4 | Pending |
+| TQ-02 | Phase 4 | Pending |
+| JS-01 | Phase 4 | Pending |
+| JS-02 | Phase 4 | Pending |
+| JS-03 | Phase 4 | Pending |
+| TQ-03 | Phase 5 | Pending |
+| TQ-04 | Phase 5 | Pending |
+| WK-01 | Phase 6 | Pending |
+| WK-02 | Phase 6 | Pending |
+| WK-03 | Phase 6 | Pending |
+| WK-04 | Phase 6 | Pending |
+| SM-10 | Phase 7 | Pending |
+| SM-11 | Phase 7 | Pending |
+| TS-01 | Phase 7 | Pending |
+| TS-02 | Phase 7 | Pending |
+| TS-03 | Phase 7 | Pending |
 
 **Coverage:**
 - v0.2 requirements: 16 total
-- Mapped to phases: 0
-- Unmapped: 16 ⚠️
+- Mapped to phases: 16
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-14*
-*Last updated: 2026-03-14 after initial definition*
+*Last updated: 2026-03-14 after roadmap creation — all 16 requirements mapped*
