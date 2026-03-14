@@ -53,6 +53,10 @@ When invoked as BuildProofmarkResponse, rebuild incorporating reviewer feedback.
 4. Every non-strict/fuzzy rule must cite BRD anti-pattern or output inventory
    evidence.
 5. Determine sort columns for deterministic row ordering.
+6. **Code quality gate:** Before returning SUCCESS, invoke your `code-reviewer`
+   sub-agent. Pass it the proofmark config YAML you wrote. If it finds issues
+   (malformed YAML, missing columns, unjustified relaxations), fix them. Do not
+   return SUCCESS with unresolved findings.
 
 ## stdout contract
 

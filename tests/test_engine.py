@@ -16,10 +16,7 @@ import pytest
 
 from workflow_engine.db import (
     claim_task,
-    close_pool,
     enqueue_task,
-    ensure_schema,
-    get_pool,
     load_job_state,
     save_job_state,
 )
@@ -46,9 +43,9 @@ class ScriptedNode(Node):
         return self._outcomes.pop(0) if self._outcomes else self._default
 
 
-def _capture_logs() -> list[dict]:
+def _capture_logs() -> list[dict[str, object]]:
     """Configure structlog to capture log output as dicts and return the capture list."""
-    cap: list[dict] = []
+    cap: list[dict[str, object]] = []
 
     def capture_processor(logger, method_name, event_dict):
         cap.append(event_dict.copy())
@@ -61,18 +58,6 @@ def _capture_logs() -> list[dict]:
         cache_logger_on_first_use=False,
     )
     return cap
-
-
-@pytest.fixture(autouse=True)
-def _clean_tables():
-    """Truncate re_ tables before each test."""
-    ensure_schema()
-    pool = get_pool()
-    with pool.connection() as conn:
-        conn.execute("TRUNCATE control.re_task_queue RESTART IDENTITY CASCADE")
-        conn.execute("TRUNCATE control.re_job_state CASCADE")
-    yield
-    close_pool()
 
 
 def _run_job_via_queue(handler: StepHandler, job_id: str, start_node: str = None) -> JobState:

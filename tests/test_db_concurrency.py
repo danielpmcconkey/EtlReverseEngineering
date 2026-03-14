@@ -8,10 +8,8 @@ import psycopg.errors
 import pytest
 
 from workflow_engine.db import (
-    close_pool,
     complete_task,
     enqueue_task,
-    ensure_schema,
     get_pool,
 )
 
@@ -25,17 +23,6 @@ _CLAIM_SQL = (
     "FOR UPDATE SKIP LOCKED "
     "LIMIT 1"
 )
-
-
-@pytest.fixture(autouse=True)
-def _clean_tables():
-    """Truncate re_task_queue before each test."""
-    ensure_schema()
-    pool = get_pool()
-    with pool.connection() as conn:
-        conn.execute("TRUNCATE control.re_task_queue RESTART IDENTITY CASCADE")
-    yield
-    close_pool()
 
 
 # -- SKIP LOCKED tests --------------------------------------------------------

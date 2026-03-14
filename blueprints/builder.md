@@ -53,6 +53,9 @@ feedback.
    b. Implement using the `execute(shared_state) -> shared_state` interface.
    c. Use pandas for DataFrame operations.
 5. Verify every FSD item is implemented.
+6. **Code quality gate:** Before returning SUCCESS, invoke your `code-reviewer`
+   sub-agent. Pass it the files you wrote. If it finds issues, fix them. Do not
+   return SUCCESS with unresolved code quality findings.
 
 ## stdout contract
 

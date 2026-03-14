@@ -7,26 +7,10 @@ import time
 import pytest
 
 from workflow_engine.db import (
-    claim_task,
-    close_pool,
     complete_task,
     enqueue_task,
-    ensure_schema,
-    get_pool,
 )
 from workflow_engine.worker import WorkerPool
-
-
-@pytest.fixture(autouse=True)
-def _clean_tables():
-    """Truncate re_ tables before each test."""
-    ensure_schema()
-    pool = get_pool()
-    with pool.connection() as conn:
-        conn.execute("TRUNCATE control.re_task_queue RESTART IDENTITY CASCADE")
-        conn.execute("TRUNCATE control.re_job_state CASCADE")
-    yield
-    close_pool()
 
 
 class TestWorkerPoolConfig:

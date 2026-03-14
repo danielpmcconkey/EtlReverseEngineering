@@ -52,6 +52,9 @@ rewrite incorporating reviewer feedback.
    c. Execute transformation logic.
    d. Assert expected outcomes per BDD Then clause.
 5. Write test-plan.md mapping tests to BDD scenarios.
+6. **Code quality gate:** Before returning SUCCESS, invoke your `code-reviewer`
+   sub-agent. Pass it the test file you wrote. If it finds issues, fix them. Do
+   not return SUCCESS with unresolved code quality findings.
 
 ## stdout contract
 

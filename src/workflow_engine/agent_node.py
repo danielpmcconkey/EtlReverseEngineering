@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -39,12 +40,14 @@ class AgentNode(Node):
         *,
         model: str = "sonnet",
         budget: float = 0.50,
+        sub_agents: dict[str, Any] | None = None,
     ) -> None:
         self.node_name = node_name
         self.blueprint_path = blueprint_path
         self.jobs_dir = jobs_dir
         self.model = model
         self.budget = budget
+        self.sub_agents = sub_agents
 
     def execute(self, job: JobState) -> Outcome:
         job_dir = self.jobs_dir / job.job_id
@@ -77,8 +80,12 @@ class AgentNode(Node):
             "--max-budget-usd", str(self.budget),
             "--dangerously-skip-permissions",
             "--no-session-persistence",
-            prompt,
         ]
+
+        if self.sub_agents:
+            cmd.extend(["--agents", json.dumps(self.sub_agents)])
+
+        cmd.append(prompt)
 
         log.info(
             "agent_invoke",
@@ -179,35 +186,29 @@ class AgentNode(Node):
         return outcome
 
     @staticmethod
-    def _extract_outcome_json(text: str) -> dict | None:
-        """Extract the last JSON object from agent text that contains an 'outcome' key."""
-        # Walk backwards through the text looking for JSON blocks.
-        # The agent is instructed to emit the outcome as its final JSON block.
-        idx = len(text)
-        while idx > 0:
-            close = text.rfind("}", 0, idx)
-            if close == -1:
-                return None
-            # Find the matching open brace by scanning backwards.
-            depth = 0
-            pos = close
-            while pos >= 0:
-                if text[pos] == "}":
-                    depth += 1
-                elif text[pos] == "{":
-                    depth -= 1
-                    if depth == 0:
-                        break
-                pos -= 1
-            if pos < 0:
-                idx = close
-                continue
-            candidate = text[pos : close + 1]
-            try:
-                data = json.loads(candidate)
-                if isinstance(data, dict) and "outcome" in data:
-                    return data
-            except json.JSONDecodeError:
-                pass
-            idx = pos
-        return None
+    def _extract_outcome_json(text: str) -> dict[str, Any] | None:
+        """Extract the last JSON object from agent text that contains an 'outcome' key.
+
+        Splits on '{', attempts json.loads on each '{...}' candidate, and
+        returns the last one containing an 'outcome' key.
+        """
+        result: dict[str, Any] | None = None
+        parts = text.split("{")
+        for i in range(1, len(parts)):
+            candidate = "{" + "{".join(parts[i:])
+            # Try progressively shorter suffixes starting from the full remainder.
+            # Walk backwards through closing braces to find valid JSON.
+            search_start = 0
+            while True:
+                close = candidate.find("}", search_start)
+                if close == -1:
+                    break
+                snippet = candidate[: close + 1]
+                try:
+                    data = json.loads(snippet)
+                    if isinstance(data, dict) and "outcome" in data:
+                        result = data
+                    break  # valid parse — move to next split
+                except json.JSONDecodeError:
+                    search_start = close + 1
+        return result

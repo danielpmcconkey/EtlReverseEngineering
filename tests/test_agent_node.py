@@ -312,3 +312,45 @@ class TestAgentNodeExecute:
         cmd = mock_run.call_args[0][0]
         prompt = cmd[-1]
         assert "CONDITIONAL at ReviewBrd" in prompt
+
+    def test_sub_agents_included_in_cli_command(self, tmp_job_env: tuple[Path, Path, Path]) -> None:
+        """When sub_agents is set, --agents flag is passed to CLI."""
+        _, jobs_dir, bp = tmp_job_env
+        sub_agents = {"reviewer": {"description": "Reviews code", "prompt": "Review this"}}
+        node = AgentNode(
+            node_name="BuildJobArtifacts",
+            blueprint_path=bp,
+            jobs_dir=jobs_dir,
+            sub_agents=sub_agents,
+        )
+        job = JobState(job_id="job-sub-01")
+        mock_result = _make_cli_response("SUCCESS")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = mock_result
+            mock_run.return_value.stderr = ""
+
+            node.execute(job)
+
+        cmd = mock_run.call_args[0][0]
+        assert "--agents" in cmd
+        agents_json = cmd[cmd.index("--agents") + 1]
+        parsed = json.loads(agents_json)
+        assert "reviewer" in parsed
+        assert parsed["reviewer"]["description"] == "Reviews code"
+
+    def test_no_sub_agents_omits_flag(self, agent_node: AgentNode) -> None:
+        """When sub_agents is None, --agents flag is not in CLI command."""
+        job = JobState(job_id="job-sub-02")
+        mock_result = _make_cli_response("SUCCESS")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = mock_result
+            mock_run.return_value.stderr = ""
+
+            agent_node.execute(job)
+
+        cmd = mock_run.call_args[0][0]
+        assert "--agents" not in cmd

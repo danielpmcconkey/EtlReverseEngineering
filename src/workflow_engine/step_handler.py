@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import random
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -50,7 +51,7 @@ class StepHandler:
             self._registry = create_node_registry(rng)
         self._log = structlog.get_logger()
 
-    def __call__(self, task: dict) -> None:
+    def __call__(self, task: dict[str, Any]) -> None:
         """Process a single claimed task."""
         task_id = task["id"]
         job_id = task["job_id"]

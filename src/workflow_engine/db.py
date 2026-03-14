@@ -13,6 +13,8 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
+from typing import Any
+
 from workflow_engine.models import JobState
 
 _pool: ConnectionPool | None = None
@@ -59,11 +61,14 @@ def enqueue_task(job_id: str, node_name: str) -> int:
             "VALUES (%s, %s) RETURNING id",
             (job_id, node_name),
         ).fetchone()
-        assert row is not None
+        if row is None:
+            raise RuntimeError(
+                f"INSERT INTO control.re_task_queue returned no row for job_id={job_id}"
+            )
         return row[0]
 
 
-def claim_task() -> dict | None:
+def claim_task() -> dict[str, Any] | None:
     """Claim the oldest pending task via SKIP LOCKED. Returns dict or None."""
     pool = get_pool()
     with pool.connection() as conn:

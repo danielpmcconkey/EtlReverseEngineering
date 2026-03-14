@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import threading
 import time
-from typing import Callable, Protocol
+from typing import Any, Protocol
 
 import structlog
 
@@ -23,7 +23,7 @@ class TaskHandler(Protocol):
     the next task (or marking terminal).
     """
 
-    def __call__(self, task: dict) -> None: ...
+    def __call__(self, task: dict[str, Any]) -> None: ...
 
 
 class WorkerPool:

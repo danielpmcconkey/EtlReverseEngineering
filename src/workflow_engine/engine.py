@@ -15,7 +15,7 @@ from workflow_engine.db import (
     ensure_schema,
     load_job_state,
 )
-from workflow_engine.logging import configure_logging
+from workflow_engine.log_config import configure_logging
 from workflow_engine.models import EngineConfig, JobState
 from workflow_engine.queue_ops import ingest_manifest
 from workflow_engine.step_handler import StepHandler

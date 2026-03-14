@@ -4,7 +4,7 @@ import io
 import json
 import sys
 
-from workflow_engine.logging import configure_logging
+from workflow_engine.log_config import configure_logging
 
 
 class TestLogging:

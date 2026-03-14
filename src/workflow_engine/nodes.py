@@ -121,6 +121,17 @@ _NODE_DESCRIPTIONS: dict[str, str] = {
 }
 
 
+_TRIAGE_DESCRIPTIONS: dict[str, str] = {
+    "Triage_ProfileData":    "data-profiler: Profiles failed row data for triage context",
+    "Triage_AnalyzeOgFlow":  "og-flow-analyst: Analyzes original data flow for triage context",
+    "Triage_CheckBrd":       "triage-brd-checker: Checks BRD against data flow findings",
+    "Triage_CheckFsd":       "triage-fsd-checker: Checks FSD against data flow findings",
+    "Triage_CheckCode":      "triage-code-checker: Checks code artifacts against data flow findings",
+    "Triage_CheckProofmark": "triage-pm-checker: Checks proofmark config against data profile",
+    "Triage_Route":          "triage-router: Routes to earliest fault rewind target",
+}
+
+
 # Response node descriptions (WORK type -- write/build, never review).
 _RESPONSE_NODE_DESCRIPTIONS: dict[str, str] = {
     "WriteBrdResponse":          "brd-writer: Revises BRD based on reviewer feedback",
@@ -160,15 +171,6 @@ def create_node_registry(rng: random.Random | None = None) -> dict[str, Node]:
         registry[node_name] = StubWorkNode(node_name, description, rng=rng)
 
     # Triage pipeline nodes.
-    _TRIAGE_DESCRIPTIONS: dict[str, str] = {
-        "Triage_ProfileData":    "data-profiler: Profiles failed row data for triage context",
-        "Triage_AnalyzeOgFlow":  "og-flow-analyst: Analyzes original data flow for triage context",
-        "Triage_CheckBrd":       "triage-brd-checker: Checks BRD against data flow findings",
-        "Triage_CheckFsd":       "triage-fsd-checker: Checks FSD against data flow findings",
-        "Triage_CheckCode":      "triage-code-checker: Checks code artifacts against data flow findings",
-        "Triage_CheckProofmark": "triage-pm-checker: Checks proofmark config against data profile",
-        "Triage_Route":          "triage-router: Routes to earliest fault rewind target",
-    }
     # T1-T2: context gathering (StubWorkNode, deterministic without RNG)
     for t_node in TRIAGE_NODES[:2]:
         registry[t_node] = StubWorkNode(t_node, _TRIAGE_DESCRIPTIONS[t_node])
@@ -187,6 +189,40 @@ def _blueprint_name(description: str) -> str:
     return description.split(":")[0].strip()
 
 
+# Author nodes that get an internal code quality reviewer sub-agent.
+# These nodes generate code or config — the sub-agent catches slop before
+# the output reaches the dedicated reviewer node downstream.
+_AUTHOR_NODES: set[str] = {
+    "BuildJobArtifacts",
+    "BuildJobArtifactsResponse",
+    "BuildProofmarkConfig",
+    "BuildProofmarkResponse",
+    "BuildUnitTests",
+    "BuildUnitTestsResponse",
+}
+
+# Sub-agent definition for code quality review within author nodes.
+_CODE_REVIEWER_SUB_AGENT: dict[str, dict[str, str]] = {
+    "code-reviewer": {
+        "description": "Reviews generated code for quality issues",
+        "prompt": (
+            "You are a Python code quality reviewer. When invoked, review the "
+            "code files you are given for:\n"
+            "1. PEP 8 compliance and Pythonic idioms\n"
+            "2. Type annotations on all functions and parameters\n"
+            "3. pathlib instead of os.path\n"
+            "4. Context managers for file/connection handling\n"
+            "5. No mutable default arguments\n"
+            "6. No bare except clauses\n"
+            "7. Clean imports (no wildcards, proper ordering)\n"
+            "8. No dead code or commented-out blocks\n\n"
+            "Respond with a list of specific issues found (file, line, issue) "
+            "or confirm the code is clean. Be terse and specific."
+        ),
+    },
+}
+
+
 def create_agent_registry(
     blueprints_dir: Path,
     jobs_dir: Path,
@@ -198,22 +234,11 @@ def create_agent_registry(
 
     Each node maps to a blueprint file at blueprints_dir/{blueprint-name}.md.
     Falls back to TriageRouterNode for Triage_Route (deterministic routing, no agent needed).
+    Author nodes (builders/writers) get a code quality reviewer sub-agent.
     """
     from workflow_engine.agent_node import AgentNode
 
-    all_descriptions = {**_NODE_DESCRIPTIONS, **_RESPONSE_NODE_DESCRIPTIONS}
-
-    # Triage descriptions (duplicated from create_node_registry — same source of truth).
-    triage_descriptions: dict[str, str] = {
-        "Triage_ProfileData":    "data-profiler: Profiles failed row data for triage context",
-        "Triage_AnalyzeOgFlow":  "og-flow-analyst: Analyzes original data flow for triage context",
-        "Triage_CheckBrd":       "triage-brd-checker: Checks BRD against data flow findings",
-        "Triage_CheckFsd":       "triage-fsd-checker: Checks FSD against data flow findings",
-        "Triage_CheckCode":      "triage-code-checker: Checks code artifacts against data flow findings",
-        "Triage_CheckProofmark": "triage-pm-checker: Checks proofmark config against data profile",
-        "Triage_Route":          "triage-router: Routes to earliest fault rewind target",
-    }
-    all_descriptions.update(triage_descriptions)
+    all_descriptions = {**_NODE_DESCRIPTIONS, **_RESPONSE_NODE_DESCRIPTIONS, **_TRIAGE_DESCRIPTIONS}
 
     registry: dict[str, Node] = {}
     for node_name, description in all_descriptions.items():
@@ -225,12 +250,14 @@ def create_agent_registry(
 
         bp_name = _blueprint_name(description)
         bp_path = blueprints_dir / f"{bp_name}.md"
+        sub_agents = _CODE_REVIEWER_SUB_AGENT if node_name in _AUTHOR_NODES else None
         registry[node_name] = AgentNode(
             node_name=node_name,
             blueprint_path=bp_path,
             jobs_dir=jobs_dir,
             model=model,
             budget=budget,
+            sub_agents=sub_agents,
         )
 
     return registry
