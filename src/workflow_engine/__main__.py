@@ -48,7 +48,7 @@ def main() -> None:
         "--model", default="sonnet",
         help="Claude model for agent invocations (default: sonnet).",
     )
-parser.add_argument(
+    parser.add_argument(
         "--timeout", type=float, default=3600.0,
         help="Max seconds to wait for all jobs to complete (default: 3600).",
     )
