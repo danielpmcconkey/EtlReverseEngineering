@@ -37,7 +37,7 @@ feedback.
 
 ### Product artifacts
 - **Job conf:** `{job_dir}/artifacts/code/jobconf.json`
-- **External modules (if applicable):** `{job_dir}/artifacts/code/transforms/{module_name}.py`
+- **External modules (if applicable):** `{job_dir}/artifacts/code/{module_name}.py`
 
 ### Process artifact
 - **File:** `{job_dir}/process/BuildJobArtifacts.json`
@@ -68,6 +68,18 @@ feedback.
 - Build EXACTLY what the FSD specifies. No features, optimizations, or
   "improvements" beyond the spec.
 - All generated code lives in `{job_dir}/artifacts/code/`. NOT in
-  MockEtlFrameworkPython directly.
-- The framework loads generated code via tokenized paths — no cross-repo writes.
+  MockEtlFrameworkPython directly. The publisher handles deployment.
+- **RE naming convention:** All RE artifacts must be distinguishable from OG:
+  - `jobName` in the job conf: `{job_name}_re` (e.g., `DansTransactionSpecial_re`)
+  - `typeName` for external modules: append `_re` (e.g., `ExternalModules.MyClassName_re`)
+  - External module `.py` filename: `{module_name}_re.py`
+  - The `register()` call inside the module must use the `_re` typeName
+- **Output directory:** Job confs must set `outputDirectory` to `Output/re-curated`
+  (NOT `Output/curated` — that's OG output, read-only). This is a relative path
+  the framework resolves against `{ETL_ROOT}` at runtime.
+- **External modules:** The job conf uses `typeName` to reference external modules.
+  The framework discovers modules by scanning its externals directories at import
+  time — no file path in the conf. Write the `.py` file to `{job_dir}/artifacts/code/`.
+  The publisher handles deployment to `RE/externals/`.
+- The publisher handles all deployment — no cross-repo writes from the builder.
 - If the FSD says reproduce an anti-pattern, do it.

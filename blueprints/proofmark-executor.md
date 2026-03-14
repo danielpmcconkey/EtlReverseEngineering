@@ -22,6 +22,7 @@ service processes them. You do NOT run Proofmark locally.
 
 **Process artifacts:**
 - `{job_dir}/process/ExecuteJobRuns.json` — which dates produced output
+- `{job_dir}/process/Publish.json` — registered job name (`{job_name}_re`)
 
 **Product artifacts:**
 - `{job_dir}/artifacts/proofmark-config.yaml`
@@ -31,6 +32,10 @@ service processes them. You do NOT run Proofmark locally.
 - RE output at `{ETL_ROOT}/Output/re-curated/{job_name}/` (produced by job-executor via host)
 
 ## Writes
+
+### Deployed files
+- **Proofmark config:** Copy `{job_dir}/artifacts/proofmark-config.yaml`
+  → `/workspace/MockEtlFrameworkPython/RE/Jobs/{job_name}/proofmark-config.yaml`
 
 ### Product artifact
 - **File:** `{job_dir}/artifacts/proofmark-results.md`
@@ -49,34 +54,37 @@ into the database and read results back.
 
 1. Read the Proofmark config YAML for column match rules.
 2. Read ExecuteJobRuns process artifact for dates that produced output.
-3. For each date that produced output, insert a comparison task:
+3. **Deploy the proofmark config** alongside the job conf:
+   Copy `{job_dir}/artifacts/proofmark-config.yaml`
+   → `/workspace/MockEtlFrameworkPython/RE/Jobs/{job_name}/proofmark-config.yaml`
+4. For each date that produced output, insert a comparison task:
    ```sql
    INSERT INTO control.proofmark_test_queue
      (config_path, lhs_path, rhs_path, job_key, date_key)
    VALUES (
-     '{JOB_DIR}/artifacts/proofmark-config.yaml',
-     '{ETL_ROOT}/Output/curated/{job_name}/{date}/',
-     '{ETL_ROOT}/Output/re-curated/{job_name}/{date}/',
-     '{job_name}',
+     '{ETL_ROOT}/RE/Jobs/{job_name}/proofmark-config.yaml',
+     '{ETL_ROOT}/Output/curated/{job_name}/{output_table_name}/{date}/',
+     '{ETL_ROOT}/Output/re-curated/{job_name}/{output_table_name}/{date}/',
+     '{job_name}_re',
      '{date}'
    );
    ```
-   **Critical:** Use `{ETL_ROOT}` tokens in `lhs_path` and `rhs_path`.
-   The host Proofmark service expands these at runtime. Do NOT use absolute
-   container paths — they mean nothing on the host.
-4. Poll for results until all tasks complete:
+   **Critical:** `{ETL_ROOT}` is a literal string token — do NOT resolve it.
+   The host Proofmark service expands it at runtime from its own environment.
+   Do NOT use absolute container paths — they mean nothing on the host.
+5. Poll for results until all tasks complete:
    ```sql
    SELECT date_key, status, result, error_message
    FROM control.proofmark_test_queue
-   WHERE job_key = '{job_name}'
+   WHERE job_key = '{job_name}_re'
      AND task_id >= {first_task_id}
    ORDER BY date_key;
    ```
    Wait until all rows are `Succeeded` or `Failed`.
-5. For succeeded tasks, read `result` (`PASS` or `FAIL`) and `result_json`.
-6. For failures: extract column-level mismatch details from `result_json`.
-7. Write consolidated results to product artifact.
-8. Return SUCCESS if all dates pass, FAIL if any fail.
+6. For succeeded tasks, read `result` (`PASS` or `FAIL`) and `result_json`.
+7. For failures: extract column-level mismatch details from `result_json`.
+8. Write consolidated results to product artifact.
+9. Return SUCCESS if all dates pass, FAIL if any fail.
 
 ## Database Connection
 
@@ -103,7 +111,8 @@ or
 
 - **Do NOT run Proofmark locally.** No `proofmark serve`, no `python -m proofmark`.
   Queue via `control.proofmark_test_queue` only.
-- Use `{ETL_ROOT}` tokens in all queue entry paths.
+- Use `{ETL_ROOT}` tokens in all queue entry paths. `{ETL_ROOT}` is a literal
+  string — the host resolves it at runtime. Never use container absolute paths.
 - Use the `claude` database role via `172.18.0.1`.
 - Only compare dates with both OG and RE output.
 - Capture enough failure detail for triage — column-level mismatches essential.

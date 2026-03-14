@@ -26,14 +26,14 @@ attempts. After 3, return FAIL for human review.
 
 **Product artifacts:**
 - `{job_dir}/artifacts/code/jobconf.json`
-- `{job_dir}/artifacts/code/transforms/` (if applicable)
+- `{job_dir}/artifacts/code/{module_name}.py` (if applicable)
 - `{job_dir}/artifacts/fsd.md` (for diagnostic reference)
 
 ## Writes
 
 ### Process artifact
 - **File:** `{job_dir}/process/ExecuteJobRuns.json`
-- **Body:** `{ "dates_executed": N, "dates_succeeded": N, "dates_failed": N, "failed_dates": [], "attempts": N, "fixes_applied": ["description of fix 1", ...], "output_location": "{ETL_ROOT}/Output/curated/{job_name}/" }`
+- **Body:** `{ "dates_executed": N, "dates_succeeded": N, "dates_failed": N, "failed_dates": [], "attempts": N, "fixes_applied": ["description of fix 1", ...], "output_location": "{ETL_ROOT}/Output/re-curated/{job_name}/" }`
 
 Updates to product artifacts (if fixes applied):
 - `{job_dir}/artifacts/code/jobconf.json` or `transforms/` (if code fix needed)
@@ -45,44 +45,49 @@ Updates to product artifacts (if fixes applied):
 goes through `control.task_queue` on the host.
 
 1. Verify the job is registered (check Publish process artifact).
-2. **Queue all effective dates:**
+2. **Read the registered job name from the Publish process artifact.** The
+   publisher registers the job as `{job_name}_re` in `control.jobs`. Use
+   that `_re` name in all task_queue inserts.
+3. **Queue all effective dates:**
    ```sql
    INSERT INTO control.task_queue (job_name, effective_date)
-   VALUES ('{job_name}', '{date}');
+   VALUES ('{job_name}_re', '{date}');
    ```
    Insert one row per effective date. You can batch them in a single INSERT:
    ```sql
    INSERT INTO control.task_queue (job_name, effective_date)
    VALUES
-     ('{job_name}', '2024-10-01'),
-     ('{job_name}', '2024-10-02'),
+     ('{job_name}_re', '2024-10-01'),
+     ('{job_name}_re', '2024-10-02'),
      ...
-     ('{job_name}', '2024-10-31');
+     ('{job_name}_re', '2024-10-31');
    ```
-3. **Poll for completion.** The host service processes tasks asynchronously.
+4. **Poll for completion.** The host service processes tasks asynchronously.
    Poll periodically (e.g., every 30 seconds):
    ```sql
    SELECT effective_date, status, error_message
    FROM control.task_queue
-   WHERE job_name = '{job_name}'
+   WHERE job_name = '{job_name}_re'
      AND task_id >= {first_task_id}
    ORDER BY effective_date;
    ```
    Wait until all rows are `Succeeded` or `Failed`. Do NOT re-insert tasks
    that are still `Pending` or `Running`.
-4. **If all dates succeed:** Write process artifact, return SUCCESS.
-5. **If any dates fail:** Read the `error_message` for each failed date.
+5. **If all dates succeed:** Verify output exists at
+   `/workspace/MockEtlFrameworkPython/Output/re-curated/{job_name}/`.
+   Write process artifact, return SUCCESS.
+6. **If any dates fail:** Read the `error_message` for each failed date.
    Diagnose:
    a. Categorize: code bug (wrong column, bad SQL, missing join), data issue
       (unexpected NULLs, missing source rows), or framework issue.
-6. **Attempt fix (up to 3 attempts total):**
+7. **Attempt fix (up to 3 attempts total):**
    a. If **code bug:** Fix the job conf SQL or external module. Re-queue ALL
       dates (not just the failed ones — a fix could break passing dates).
    b. If **data issue:** Likely unfixable by you. Return FAIL with diagnosis.
    c. If **framework issue:** Cannot fix. Return FAIL immediately.
    d. Log what you changed and why.
-7. **After each fix:** Re-queue all dates. If all pass, SUCCESS.
-8. **After 3 failed attempts:** Return FAIL with full diagnostic details.
+8. **After each fix:** Re-queue all dates. If all pass, SUCCESS.
+9. **After 3 failed attempts:** Return FAIL with full diagnostic details.
 
 ## Database Connection
 

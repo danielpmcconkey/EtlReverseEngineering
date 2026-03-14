@@ -23,7 +23,7 @@ and logically.
 **Product artifacts:**
 - `{job_dir}/artifacts/fsd.md`
 - `{job_dir}/artifacts/code/jobconf.json`
-- `{job_dir}/artifacts/code/transforms/` (if applicable)
+- `{job_dir}/artifacts/code/{module_name}_re.py` (if applicable)
 
 **Source material:**
 - Python framework docs at `{FW_DOCS}/`
@@ -55,3 +55,14 @@ and logically.
 - **APPROVED:** All FSD items implemented correctly, valid JSON, clean code.
 - **CONDITIONAL:** Minor — typo in column name, missing property with obvious value.
 - **REJECTED:** Wrong SQL logic, missing modules, JSON won't parse.
+
+## RE Naming Convention
+
+The builder appends `_re` to all identifiers to distinguish RE artifacts from OG:
+- `jobName` in the conf → `{job_name}_re`
+- `typeName` for External modules → `ExternalModules.{ClassName}_re`
+- Module filename → `{module_name}_re.py`
+- `outputDirectory` → `Output/re-curated` (NOT `Output/curated`)
+
+These are intentional deviations from the OG names. Do NOT flag them as
+errors or mismatches with the FSD.

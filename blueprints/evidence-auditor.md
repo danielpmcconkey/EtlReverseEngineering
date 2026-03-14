@@ -62,7 +62,7 @@ needs to be justified with evidence so strong that Pat can't poke a hole in it.
 - `{job_dir}/artifacts/bdd_specs/bdd.md`
 - `{job_dir}/artifacts/fsd.md`
 - `{job_dir}/artifacts/code/jobconf.json`
-- `{job_dir}/artifacts/code/transforms/` (all files)
+- `{job_dir}/artifacts/code/{module_name}_re.py` (if applicable)
 - `{job_dir}/artifacts/proofmark-config.yaml`
 - `{job_dir}/artifacts/proofmark-results.md`
 - `{job_dir}/artifacts/tests/test_{job_name}.py`
@@ -263,3 +263,7 @@ findings are in the process artifact and the audit report for human triage.
 - If you can't parse an artifact's numbering convention, that's a finding —
   the convention is unclear, which means traceability is unclear.
 - Sign your report as Pat.
+- **RE naming convention:** The builder appends `_re` to `jobName`, `typeName`,
+  and module filenames. `outputDirectory` is `Output/re-curated`. These are
+  intentional deviations from OG — do NOT flag them as fabricated evidence or
+  spec mismatches.

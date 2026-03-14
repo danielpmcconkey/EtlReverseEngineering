@@ -50,7 +50,7 @@ jobs/{job_id}/artifacts/
   bdd_specs/                 # Design
   code/
     jobconf.json             # FW loads via tokenized path
-    transforms/              # External module .py files
+    {module_name}.py         # External module (if applicable)
   proofmark-config.yaml      # Build
   tests/
     test_{job_name}.py       # Unit tests
@@ -60,12 +60,14 @@ jobs/{job_id}/artifacts/
 ```
 
 **Product artifacts live in EtlReverseEngineering during development.**
-The publisher deploys final code artifacts (job confs, external modules) into
-MockEtlFrameworkPython at the standard framework locations:
-- Job confs → `{ETL_ROOT}/JobExecutor/Jobs/{job_name}.json`
-- External modules → `{ETL_ROOT}/src/etl/modules/externals/`
+The publisher deploys final code artifacts into MockEtlFrameworkPython's
+`RE/` directories (symlinked to the host framework):
+- Job confs → `/workspace/MockEtlFrameworkPython/RE/Jobs/{job_name}/jobconf.json`
+- External modules → `/workspace/MockEtlFrameworkPython/RE/externals/{module_name}.py`
+- Proofmark configs → `/workspace/MockEtlFrameworkPython/RE/Jobs/{job_name}/proofmark-config.yaml`
 
-The ETL framework finds them there via tokenized paths in `control.jobs`.
+The host framework sees these via symlinks. `control.jobs` stores the path as
+`{ETL_ROOT}/RE/Jobs/{job_name}/jobconf.json` (literal `{ETL_ROOT}` token).
 Only the publisher writes to MockEtlFrameworkPython — other agents write
 to their `{job_dir}/artifacts/` working directory.
 
@@ -108,24 +110,33 @@ An agent reads from three places:
 
 ## Path Tokens
 
-Resolved by the orchestrator in the task prompt:
+### Orchestrator-resolved tokens
+
+These are resolved by the orchestrator before the agent sees them:
 
 | Token | Meaning | Example (container) |
 |-------|---------|---------------------|
-| `{ETL_ROOT}` | Python ETL framework root (env var) | `/workspace/MockEtlFrameworkPython` |
 | `{ORCH_ROOT}` | EtlReverseEngineering root | `/workspace/EtlReverseEngineering` |
 | `{JOB_DIR}` | Per-job directory | `{ORCH_ROOT}/jobs/{job_id}` |
 | `{OG_CS_ROOT}` | OG C# MockEtlFramework repo | `/workspace/MockEtlFramework` |
-| `{FW_DOCS}` | Python framework documentation | `{ETL_ROOT}/Documentation` |
+| `{FW_DOCS}` | Python framework documentation | `/workspace/MockEtlFrameworkPython/Documentation` |
+
+### Literal tokens (NOT resolved by orchestrator)
+
+| Token | Meaning | Why literal |
+|-------|---------|-------------|
+| `{ETL_ROOT}` | Python ETL framework root | Host-side services resolve this from their own env var at runtime. The host path differs from the container path. Agents must write `{ETL_ROOT}` as a literal string in all database entries and file references. |
 
 ### Derived paths (not separate tokens — use `{ETL_ROOT}` prefix)
 
 | Path | Meaning | Mode |
 |------|---------|------|
 | `{ETL_ROOT}/Output/curated/` | OG curated output | Read-only (Docker ro mount) |
-| `{ETL_ROOT}/Output/re-curated/` | RE curated output (produced by host) | Read |
+| `{ETL_ROOT}/Output/re-curated/` | RE curated output (produced by host) | Read-only (Docker ro mount) |
 | `{ETL_ROOT}/src/etl/modules/externals/` | OG external modules (reference) | Read |
 | `{ETL_ROOT}/JobExecutor/Jobs/` | OG job confs (reference) | Read |
+| `{ETL_ROOT}/RE/Jobs/` | RE job confs + proofmark configs | Write (symlinked to host) |
+| `{ETL_ROOT}/RE/externals/` | RE external modules | Write (symlinked to host) |
 
 ### Queue entry paths
 
@@ -139,10 +150,10 @@ Example Proofmark queue entry:
 ```sql
 INSERT INTO control.proofmark_test_queue (config_path, lhs_path, rhs_path, job_key, date_key)
 VALUES (
-  '{ETL_ROOT}/Output/curated/{job_name}/proofmark-config.yaml',
-  '{ETL_ROOT}/Output/curated/{job_name}/{date}/',
-  '{ETL_ROOT}/Output/re-curated/{job_name}/{date}/',
-  '{job_name}',
+  '{ETL_ROOT}/RE/Jobs/{job_name}/proofmark-config.yaml',
+  '{ETL_ROOT}/Output/curated/{job_name}/{output_table}/{date}/',
+  '{ETL_ROOT}/Output/re-curated/{job_name}/{output_table}/{date}/',
+  '{job_name}_re',
   '{date}'
 );
 ```
@@ -155,6 +166,28 @@ the container. This is deliberate — validation runs on the host only.
 
 To execute ETL jobs: INSERT into `control.task_queue`. See `job-executor` blueprint.
 To run Proofmark: INSERT into `control.proofmark_test_queue`. See `proofmark-executor` blueprint.
+
+## OG vs RE Job Identity
+
+The orchestrator tracks jobs by an internal RE job ID (e.g., `373`). This is
+NOT the same as the ETL framework's `job_id` in `control.jobs`.
+
+- The orchestrator provides `job_name` — this is the **OG job name** (e.g.,
+  `dans_transaction_special`). It identifies the job being reverse-engineered.
+- The **publisher** creates a NEW entry in `control.jobs` with the name
+  `{job_name}_re` (e.g., `dans_transaction_special_re`). This gets its own
+  auto-incremented `job_id` from Postgres.
+- **All downstream agents** (ExecuteJobRuns, ExecuteProofmark) must use the
+  `_re` name when inserting into queue tables. Read the registered name from
+  the Publish process artifact (`registered_name` field).
+- The `_re` suffix prevents unique constraint collisions with the OG job
+  in `control.jobs`.
+- OG output paths use the OG name (`Output/curated/{job_name}/`).
+  RE output paths use the OG name too (`Output/re-curated/{job_name}/`)
+  because the job conf's `jobDirName` matches the OG convention.
+
+Do NOT confuse the orchestrator's job ID with the framework's `job_id`.
+Do NOT use the OG job name in queue tables — always append `_re`.
 
 ## OG C# Code Layout
 
