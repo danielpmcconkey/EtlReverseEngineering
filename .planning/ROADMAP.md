@@ -3,7 +3,8 @@
 ## Milestones
 
 - ✅ **v0.1 State Machine Mechanics** - Phases 1-3 (shipped 2026-03-13)
-- 🚧 **v0.2 Parallel Execution Infrastructure** - Phases 4-7 (in progress)
+- ✅ **v0.2 Parallel Execution Infrastructure** - Phases 4-7 (shipped 2026-03-13)
+- 🚧 **v0.3 Agent Integration** - Phase 8+ (in progress)
 
 ## Phases
 
@@ -70,75 +71,81 @@ Plans:
 
 </details>
 
-### 🚧 v0.2 Parallel Execution Infrastructure (In Progress)
+### ✅ v0.2 Parallel Execution Infrastructure (Shipped 2026-03-13)
 
 **Milestone Goal:** Replace the synchronous single-threaded engine with a Postgres task queue and multi-threaded worker pool that processes jobs concurrently.
 
-- [ ] **Phase 4: Postgres Foundations** - Task queue schema, SKIP LOCKED claiming, and Postgres-backed job state
-- [ ] **Phase 5: Queue Write Paths** - Enqueue-next-on-completion and manifest ingestion
-- [ ] **Phase 6: Worker Pool** - N configurable worker threads running the claim-execute-enqueue loop
-- [ ] **Phase 7: State Machine Wiring and Tests** - Wire existing SM logic into queue execution, rewrite engine integration tests
+- [x] **Phase 4: Postgres Foundations** - Task queue schema, SKIP LOCKED claiming, and Postgres-backed job state (completed 2026-03-13)
+- [x] **Phase 5: Queue Write Paths** - Enqueue-next-on-completion and manifest ingestion (completed 2026-03-13)
+- [x] **Phase 6: Worker Pool** - N configurable worker threads running the claim-execute-enqueue loop (completed 2026-03-13)
+- [x] **Phase 7: State Machine Wiring and Tests** - Wire existing SM logic into queue execution, rewrite engine integration tests (completed 2026-03-13)
+
+### 🚧 v0.3 Agent Integration (In Progress)
+
+**Milestone Goal:** Replace stub nodes with real Claude CLI agent invocations. Each node maps to a blueprint file, agents communicate via structured JSON process artifacts, and the orchestrator routes deterministically on outcome enums.
+
+- [x] **Phase 8: Agent Invocation Layer** - AgentNode class, CLI invocation, outcome parsing, agent/stub registry toggle, FBR_EvidenceAudit terminal gate (completed 2026-03-14)
+- [ ] **Phase 9: Integration Testing** - End-to-end run with real agents, validate outcome parsing, cost tracking
 
 ## Phase Details
 
+<details>
+<summary>✅ v0.2 Phase Details (Phases 4-7) - SHIPPED 2026-03-13</summary>
+
 ### Phase 4: Postgres Foundations
 **Goal**: The queue table and job state storage exist in Postgres and work correctly in isolation
-**Depends on**: Phase 3
-**Requirements**: TQ-01, TQ-02, JS-01, JS-02, JS-03
-**Success Criteria** (what must be TRUE):
-  1. `re_task_queue` table exists in the `control` schema with FIFO ordering on `created_at`
-  2. A worker can claim a task via `SELECT ... FOR UPDATE SKIP LOCKED` and no other concurrent caller gets the same row
-  3. Job state can be written to and read from Postgres by any caller — not tied to a process or thread
-  4. At most one active task per job exists on the queue at any given time
-**Plans:** 2 plans
-
-Plans:
-- [ ] 04-01-PLAN.md — Schema DDL, psycopg3 connection pool, task queue and job state CRUD with tests
-- [ ] 04-02-PLAN.md — Concurrency proof: SKIP LOCKED double-claim prevention, one-active-per-job constraint tests
+**Requirements**: TQ-01, TQ-02, JS-01, JS-02, JS-03 — ALL DONE
 
 ### Phase 5: Queue Write Paths
-**Goal**: Tasks flow through the queue automatically — completion enqueues the next step, and loading a manifest enqueues the first task for every job
-**Depends on**: Phase 4
-**Requirements**: TQ-03, TQ-04
-**Success Criteria** (what must be TRUE):
-  1. When a node completes, the next node's task appears on the queue (determined by transition lookup) rather than being called directly
-  2. Loading a job manifest JSON file enqueues one task per job in the manifest (the first node for each job)
-  3. No direct node-to-node invocation exists in the codebase — all handoffs go through the queue
-**Plans**: TBD
+**Goal**: Tasks flow through the queue automatically
+**Requirements**: TQ-03, TQ-04 — ALL DONE
 
 ### Phase 6: Worker Pool
-**Goal**: N worker threads run concurrently, each independently claiming and processing tasks from the queue
-**Depends on**: Phase 5
-**Requirements**: WK-01, WK-02, WK-03, WK-04
-**Success Criteria** (what must be TRUE):
-  1. Six worker threads start by default and all actively monitor the queue for available tasks
-  2. Worker count can be changed via config file or environment variable without code changes
-  3. Each worker independently loops: claim a task, execute its callback, enqueue the next step, repeat
-  4. Any worker can process any job's task — no affinity, no job-to-worker pinning
-**Plans**: TBD
+**Goal**: N worker threads run concurrently
+**Requirements**: WK-01, WK-02, WK-03, WK-04 — ALL DONE
 
 ### Phase 7: State Machine Wiring and Tests
-**Goal**: The full v0.1 state machine logic runs correctly through the queue-based execution model, with tests that validate it end-to-end
-**Depends on**: Phase 6
-**Requirements**: SM-10, SM-11, TS-01, TS-02, TS-03
+**Goal**: Full state machine logic runs through queue-based execution
+**Requirements**: SM-10, SM-11, TS-01, TS-02, TS-03 — ALL DONE
+
+</details>
+
+### Phase 8: Agent Invocation Layer (Completed 2026-03-14)
+**Goal**: Replace stub nodes with real Claude CLI agent invocations via a config flag
+**Depends on**: Phase 7
+**Requirements**: AG-01, AG-02, AG-03, AG-04, AG-05
+**Delivered**:
+  1. `AgentNode` class — shells out to `claude -p` with blueprint as system prompt
+  2. Structured JSON outcome parsing from agent stdout (SUCCESS/FAIL/APPROVED/CONDITIONAL/REJECTED)
+  3. Process artifact chain — agents write JSON for downstream agents on success
+  4. `EngineConfig.use_agents` flag toggles stub vs real agent registry
+  5. FBR_EvidenceAudit terminal gate (28th node, Pat persona, REJECTED → DEAD_LETTER)
+  6. Artifact cleanup on rewinds
+  7. 28 agent blueprints written by Hobson (separate commits)
+  8. 158 tests passing
+
+### Phase 9: Integration Testing (Not Started)
+**Goal**: End-to-end run with real agents on a single job
+**Depends on**: Phase 8 + Hobson's blueprints finalized
+**Requirements**: AG-06, AG-07
 **Success Criteria** (what must be TRUE):
-  1. All v0.1 transition logic — counters, rewinds, FBR gauntlet, triage routing — executes correctly when invoked per-step through the queue
-  2. A multi-job run through the queue produces the same node visit sequences and terminal states as v0.1's synchronous run
-  3. Transition table data tests pass unchanged from v0.1
-  4. Engine integration tests validate behavior through queue-based execution — covering manifest ingestion, worker pool operation, and state machine correctness
-  5. No synchronous `run_job()` test harness exists anywhere in the codebase
-**Plans**: TBD
+  1. A single job runs through the real pipeline with real Claude CLI agents
+  2. Agent outputs parse to valid Outcomes
+  3. Process artifact chain works end-to-end (each agent reads its predecessor's JSON)
+  4. Cost tracking per job is visible in logs
 
 ## Progress
 
 **Execution Order:** 4 → 5 → 6 → 7
 
-| Phase | Milestone | Plans Complete | Status | Completed |
-|-------|-----------|----------------|--------|-----------|
-| 1. Foundation and Happy Path Engine | v0.1 | 2/2 | Complete | 2026-03-13 |
-| 2. Review Branching and Counter Mechanics | v0.1 | 2/2 | Complete | 2026-03-13 |
-| 3. FBR Gauntlet, Triage, and Validation Run | v0.1 | 2/2 | Complete | 2026-03-13 |
-| 4. Postgres Foundations | v0.2 | 0/2 | Planning | - |
-| 5. Queue Write Paths | v0.2 | 0/TBD | Not started | - |
-| 6. Worker Pool | v0.2 | 0/TBD | Not started | - |
-| 7. State Machine Wiring and Tests | v0.2 | 0/TBD | Not started | - |
+| Phase | Milestone | Status | Completed |
+|-------|-----------|--------|-----------|
+| 1. Foundation and Happy Path Engine | v0.1 | Complete | 2026-03-13 |
+| 2. Review Branching and Counter Mechanics | v0.1 | Complete | 2026-03-13 |
+| 3. FBR Gauntlet, Triage, and Validation Run | v0.1 | Complete | 2026-03-13 |
+| 4. Postgres Foundations | v0.2 | Complete | 2026-03-13 |
+| 5. Queue Write Paths | v0.2 | Complete | 2026-03-13 |
+| 6. Worker Pool | v0.2 | Complete | 2026-03-13 |
+| 7. State Machine Wiring and Tests | v0.2 | Complete | 2026-03-13 |
+| 8. Agent Invocation Layer | v0.3 | Complete | 2026-03-14 |
+| 9. Integration Testing | v0.3 | Not started | - |
