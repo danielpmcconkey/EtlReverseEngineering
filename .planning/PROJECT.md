@@ -2,11 +2,22 @@
 
 ## What This Is
 
-A pure Python deterministic workflow engine that orchestrates the ETL reverse engineering pipeline for 105 jobs. The engine is a state machine — no LLM in the control loop. It drives each job through a defined waterfall (Plan → Define → Design → Build → Validate), dispatching atomic agents that claim a task, do one thing, and die. v0.1 validates the state machine mechanics with stubbed nodes and RNG outcomes before any real agents or infrastructure are connected.
+A pure Python deterministic workflow engine that orchestrates the ETL reverse engineering pipeline for 103 jobs. The engine is a state machine — no LLM in the control loop. It drives each job through a defined waterfall (Plan → Define → Design → Build → Validate), dispatching atomic agents that claim a task, do one thing, and die. v0.1 validated the state machine mechanics with stubbed nodes. v0.2 replaces the synchronous execution model with a Postgres-backed task queue and multi-threaded worker pool so multiple jobs run concurrently.
 
 ## Core Value
 
-The state machine correctly implements the transition table — rewinds, conditional loops, FBR gauntlet restarts, triage routing, and DEAD_LETTER on retry exhaustion all behave as designed.
+A constant swarm of worker threads processes jobs concurrently through the validated state machine — no worker ever blocks waiting on another, and the system scales by adding workers.
+
+## Current Milestone: v0.2 Parallel Execution Infrastructure
+
+**Goal:** Replace the synchronous single-threaded engine with a Postgres task queue and multi-threaded worker pool that processes jobs concurrently.
+
+**Target features:**
+- Postgres `re_task_queue` table with `SELECT ... FOR UPDATE SKIP LOCKED` claiming
+- Postgres-backed job state (replaces in-memory JobState)
+- N configurable worker threads (default 6) monitoring the queue
+- Job manifest JSON ingestion — load manifest, enqueue first node for every job
+- All v0.1 state machine logic preserved, invoked per-step through the queue
 
 ## Requirements
 
@@ -14,41 +25,29 @@ The state machine correctly implements the transition table — rewinds, conditi
 
 <!-- Shipped and confirmed valuable. -->
 
-(None yet — ship to validate)
+- ✓ Deterministic state machine with 27 happy-path nodes — v0.1
+- ✓ Three-outcome review model (Approve/Conditional/Fail) with counter mechanics — v0.1
+- ✓ FBR 6-gate gauntlet with restart semantics — v0.1
+- ✓ 7-step triage sub-pipeline with earliest-fault routing — v0.1
+- ✓ Structured logging sufficient for post-hoc analysis — v0.1
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Deterministic state machine with 27 happy-path nodes matching the transition table
-- [ ] Three-outcome review model: Approve / Conditional (3 max) / Fail at every review node
-- [ ] 4th Conditional auto-promotes to Fail
-- [ ] Fail rewinds to the original write node and replays the full pipeline forward
-- [ ] Conditional routes to response node → same reviewer, no downstream invalidation
-- [ ] FinalBuildReview gauntlet: 6 serial gates, any failure restarts from FBR_BrdCheck
-- [ ] FBR depth cap prevents infinite gauntlet loops
-- [ ] 7-step proofmark triage sub-pipeline (T1-T7)
-- [ ] Triage routing: earliest fault wins, no faults → DEAD_LETTER
-- [ ] Two counter types: main retry (N, per job) and conditional (M, per node instance)
-- [ ] Main retry increments on any full Fail; reaching N → DEAD_LETTER
-- [ ] Conditional counter reaching M auto-promotes to Fail (incrementing main retry)
-- [ ] Conditional counters reset to 0 on success or on rewind past that node
-- [ ] N and M are configurable with sensible defaults
-- [ ] Stubbed nodes: review nodes return RNG Approve/Conditional/Fail, non-review return RNG Success/Failure
-- [ ] Logging: job ID, node name, outcome, retry counts, transitions (structured enough for post-hoc agent analysis)
-- [ ] Run N jobs through full pipeline to exercise all paths
-- [ ] Writer/response nodes receive only the most recent rejection reason — no errata accumulation
-- [ ] Source lives at `src/workflow_engine/`
+- [ ] Postgres task queue with FIFO claiming
+- [ ] Postgres-backed job state
+- [ ] Multi-threaded worker pool (default 6, configurable)
+- [ ] Job manifest JSON ingestion
+- [ ] State machine logic preserved through queue-based execution
+- [ ] Engine integration tests rewritten for queue-based model
 
 ### Out of Scope
 
-- Postgres task queue — v0.1 uses in-memory job state
-- Claude CLI agent invocation — stubs only
+- Claude CLI agent invocation — stubs only, de-stubbing is a future milestone
 - Real agent blueprints — stubs have comments describing future behavior
-- Parallelism / concurrency — single-threaded sequential for v0.1
 - Proofmark integration — triage sub-pipeline is stubbed
 - MockEtlFrameworkPython integration — no real artifact production
-- Automated assertions — logs are the validation artifact, agents analyze post-hoc
 
 ## Context
 
@@ -92,4 +91,4 @@ The state machine correctly implements the transition table — rewinds, conditi
 | In-memory job state for v0.1 | Postgres comes later. Validate mechanics first, infrastructure second | — Pending |
 
 ---
-*Last updated: 2026-03-13 after initialization*
+*Last updated: 2026-03-14 after v0.2 milestone start*

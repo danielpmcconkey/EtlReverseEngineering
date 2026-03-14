@@ -1,151 +1,93 @@
 # Requirements: POC6 Workflow Engine
 
-**Defined:** 2026-03-13
-**Core Value:** The state machine correctly implements the transition table -- rewinds, conditional loops, FBR gauntlet restarts, triage routing, and DEAD_LETTER on retry exhaustion all behave as designed.
+**Defined:** 2026-03-14
+**Core Value:** A constant swarm of worker threads processes jobs concurrently through the validated state machine — no worker ever blocks waiting on another.
 
-## v1 Requirements
+## v0.2 Requirements
 
-Requirements for v0.1 release. Each maps to roadmap phases.
+Requirements for v0.2 release. Each maps to roadmap phases.
 
-### State Model
+### Task Queue
 
-- [x] **SM-01**: Job state tracks current node, main retry counter, and per-node conditional counters
-- [x] **SM-02**: Transition table is declarative data (dict-based), not procedural if/else
-- [x] **SM-03**: Main retry counter (N) and conditional limit (M) are configurable with sensible defaults
-- [ ] **SM-04**: Main retry counter increments on any full Fail at any review node
-- [ ] **SM-05**: Main retry counter reaching N sends job to DEAD_LETTER
-- [ ] **SM-06**: Per-node conditional counter increments on Conditional outcome at that review node
-- [ ] **SM-07**: Per-node conditional counter reaching M auto-promotes to Fail (incrementing main retry)
-- [ ] **SM-08**: Per-node conditional counter resets to 0 on success at that node
-- [ ] **SM-09**: Per-node conditional counters reset to 0 for all nodes downstream of a rewind target
+- [ ] **TQ-01**: Postgres `re_task_queue` table exists in `control` schema with FIFO ordering
+- [ ] **TQ-02**: Tasks are claimed via `SELECT ... FOR UPDATE SKIP LOCKED` — no two workers claim the same task
+- [ ] **TQ-03**: Node completion enqueues the next task (determined by transition lookup) rather than directly invoking the next node
+- [ ] **TQ-04**: Loading a job manifest JSON enqueues the first node task for every job in the manifest
 
-### Happy Path
+### Job State
 
-- [x] **HP-01**: 27 happy-path nodes execute in order from LocateOgSourceFiles through FinalSignOff -> COMPLETE
-- [x] **HP-02**: Each node is a stub with a comment describing what the real agent will do
-- [x] **HP-03**: Non-review stubs return Success/Failure via RNG
-- [x] **HP-04**: Review stubs return Approve/Conditional/Fail via RNG
+- [ ] **JS-01**: Job state is persisted in Postgres (replaces in-memory `JobState`)
+- [ ] **JS-02**: Any worker thread can read/write any job's state
+- [ ] **JS-03**: Only one active task per job exists on the queue at a time (parallelism across jobs, not within)
 
-### Review Branching
+### Workers
 
-- [x] **RB-01**: Approve routes to next node in happy path
-- [x] **RB-02**: Conditional routes to response node -> same reviewer (no downstream invalidation)
-- [x] **RB-03**: Fail rewinds to original write node and replays the full pipeline forward from there
-- [ ] **RB-04**: Writer/response nodes receive only the most recent rejection reason -- no errata accumulation
-- [x] **RB-05**: 7 response nodes exist (WriteBrdResponse, WriteBddResponse, WriteFsdResponse, BuildJobArtifactsResponse, BuildProofmarkResponse, BuildUnitTestsResponse, TriageProofmarkFailures)
+- [ ] **WK-01**: N worker threads monitor the queue, default 6
+- [ ] **WK-02**: Worker count is externally configurable (config file or environment variable)
+- [ ] **WK-03**: Each worker loops: claim task → execute callback → enqueue next step → claim next task
+- [ ] **WK-04**: Workers are fungible — any worker can process any job's task
 
-### FBR Gauntlet
+### State Machine
 
-- [ ] **FBR-01**: 6 serial gates (FBR_BrdCheck -> FBR_UnitTestCheck) execute after Publish
-- [ ] **FBR-02**: FBR gate Conditional routes to response node -> review -> approve -> restart gauntlet from FBR_BrdCheck
-- [ ] **FBR-03**: FBR gate Fail rewinds to original write node, replays forward (naturally arriving back at FBR_BrdCheck)
-- [ ] **FBR-04**: Engine tracks fbr_return_pending flag so post-fix review approval routes back to FBR_BrdCheck instead of happy path
+- [ ] **SM-10**: All existing transition logic (transitions, counters, rewinds, FBR, triage) is preserved and invoked per-step through the queue
+- [ ] **SM-11**: State machine produces the same outcomes as v0.1 (same node visit sequences, same counter behavior, same terminal states)
 
-### Triage Sub-Pipeline
+### Tests
 
-- [ ] **TR-01**: ExecuteProofmark failure enters 7-step triage (T1-T7)
-- [ ] **TR-02**: T1-T2 are context-gathering stubs (data profiling, OG flow analysis)
-- [ ] **TR-03**: T3-T6 are diagnostic stubs returning clean/fault via RNG
-- [ ] **TR-04**: T7 is pure orchestrator logic -- routes to earliest fault found
-- [ ] **TR-05**: Multiple faults route to the earliest (highest up the pipeline)
-- [ ] **TR-06**: No faults found -> DEAD_LETTER
-- [ ] **TR-07**: Triage routing triggers a rewind (which increments main retry counter)
+- [ ] **TS-01**: Transition table data tests remain unchanged
+- [ ] **TS-02**: Engine integration tests are rewritten to validate behavior through queue-based execution
+- [ ] **TS-03**: No synchronous `run_job()` test harness exists in the final codebase
 
-### Engine
+## Future Requirements
 
-- [x] **ENG-01**: Engine main loop: pick job, resolve transition, execute stub, advance state, repeat
-- [x] **ENG-02**: Run N configurable jobs through the full pipeline
-- [x] **ENG-03**: In-memory job state (no Postgres)
-- [x] **ENG-04**: Single-threaded sequential execution
+### Agent Integration
 
-### Logging
-
-- [x] **LOG-01**: Structured JSON logging via structlog
-- [x] **LOG-02**: Every transition logged: job ID, node name, outcome, main retry count, conditional counts
-- [x] **LOG-03**: Logs are sufficient for post-hoc agent analysis of workflow correctness
-
-### Project Structure
-
-- [x] **PS-01**: Source lives at src/workflow_engine/
-- [x] **PS-02**: Pure Python -- no external frameworks (structlog is the one runtime dependency)
-
-## v2 Requirements
+- **AG-01**: Node stubs replaced with Claude CLI agent invocations
+- **AG-02**: Per-agent blueprints as system prompts
+- **AG-03**: Agent cost caps per invocation
 
 ### Validation Tooling
 
 - **VAL-01**: Transition table static validation at startup (reachability, dead states, missing edges)
-- **VAL-02**: Path coverage reporting -- which transition paths were exercised across a run
-- **VAL-03**: Automated assertions that key behaviors occurred (rewinds, dead letters, gauntlet restarts)
-
-### Infrastructure Integration
-
-- **INF-01**: Postgres task queue with thread-safe claiming
-- **INF-02**: Multi-threaded worker pool with configurable concurrency
-- **INF-03**: Claude CLI agent invocation replacing stubs
+- **VAL-02**: Path coverage reporting — which transition paths were exercised across a run
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Postgres task queue | v0.1 validates mechanics with in-memory state |
-| Real agent invocation | Stubs only -- no Claude CLI, no cost |
-| Agent blueprints | Stubs have comments, not real prompts |
-| Parallelism / concurrency | Single-threaded for v0.1, multi-threaded in v2 |
+| Claude CLI agent invocation | Stubs only — de-stubbing is a future milestone |
+| Real agent blueprints | Stubs have comments, not real prompts |
 | Proofmark integration | Triage sub-pipeline is stubbed |
 | MockEtlFrameworkPython integration | No real artifact production |
-| Automated test assertions | Logs are the v0.1 validation artifact |
-| Errata accumulation | Explicitly rejected -- writer gets only most recent rejection |
+| Within-job parallelism | Jobs are serial pipelines; parallelism is across jobs only |
 | Generic workflow DSL | One pipeline, not a framework |
-| Compensation/saga pattern | Artifacts are overwritten, not rolled back |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SM-01 | Phase 1 | Complete |
-| SM-02 | Phase 1 | Complete |
-| SM-03 | Phase 1 | Complete |
-| SM-04 | Phase 2 | Pending |
-| SM-05 | Phase 2 | Pending |
-| SM-06 | Phase 2 | Pending |
-| SM-07 | Phase 2 | Pending |
-| SM-08 | Phase 2 | Pending |
-| SM-09 | Phase 2 | Pending |
-| HP-01 | Phase 1 | Complete |
-| HP-02 | Phase 1 | Complete |
-| HP-03 | Phase 1 | Complete |
-| HP-04 | Phase 1 | Complete |
-| RB-01 | Phase 2 | Complete |
-| RB-02 | Phase 2 | Complete |
-| RB-03 | Phase 2 | Complete |
-| RB-04 | Phase 2 | Pending |
-| RB-05 | Phase 2 | Complete |
-| FBR-01 | Phase 3 | Pending |
-| FBR-02 | Phase 3 | Pending |
-| FBR-03 | Phase 3 | Pending |
-| FBR-04 | Phase 3 | Pending |
-| TR-01 | Phase 3 | Pending |
-| TR-02 | Phase 3 | Pending |
-| TR-03 | Phase 3 | Pending |
-| TR-04 | Phase 3 | Pending |
-| TR-05 | Phase 3 | Pending |
-| TR-06 | Phase 3 | Pending |
-| TR-07 | Phase 3 | Pending |
-| ENG-01 | Phase 1 | Complete |
-| ENG-02 | Phase 1 | Complete |
-| ENG-03 | Phase 1 | Complete |
-| ENG-04 | Phase 1 | Complete |
-| LOG-01 | Phase 1 | Complete |
-| LOG-02 | Phase 1 | Complete |
-| LOG-03 | Phase 1 | Complete |
-| PS-01 | Phase 1 | Complete |
-| PS-02 | Phase 1 | Complete |
+| TQ-01 | — | Pending |
+| TQ-02 | — | Pending |
+| TQ-03 | — | Pending |
+| TQ-04 | — | Pending |
+| JS-01 | — | Pending |
+| JS-02 | — | Pending |
+| JS-03 | — | Pending |
+| WK-01 | — | Pending |
+| WK-02 | — | Pending |
+| WK-03 | — | Pending |
+| WK-04 | — | Pending |
+| SM-10 | — | Pending |
+| SM-11 | — | Pending |
+| TS-01 | — | Pending |
+| TS-02 | — | Pending |
+| TS-03 | — | Pending |
 
 **Coverage:**
-- v1 requirements: 38 total
-- Mapped to phases: 38
-- Unmapped: 0
+- v0.2 requirements: 16 total
+- Mapped to phases: 0
+- Unmapped: 16 ⚠️
 
 ---
-*Requirements defined: 2026-03-13*
-*Last updated: 2026-03-13 after roadmap creation*
+*Requirements defined: 2026-03-14*
+*Last updated: 2026-03-14 after initial definition*
