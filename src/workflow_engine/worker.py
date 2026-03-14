@@ -12,7 +12,7 @@ from typing import Any, Protocol
 
 import structlog
 
-from workflow_engine.db import claim_task, close_pool, ensure_schema, get_pool
+from workflow_engine.db import claim_task, close_pool, ensure_schema, get_pool, is_clutch_engaged
 
 
 class TaskHandler(Protocol):
@@ -38,12 +38,14 @@ class WorkerPool:
         handler: TaskHandler,
         n_workers: int | None = None,
         poll_interval: float = 0.1,
+        clutch_interval: float = 300.0,
     ) -> None:
         if n_workers is None:
             n_workers = int(os.environ.get("RE_WORKER_COUNT", "6"))
         self._handler = handler
         self._n_workers = n_workers
         self._poll_interval = poll_interval
+        self._clutch_interval = clutch_interval
         self._stop_event = threading.Event()
         self._threads: list[threading.Thread] = []
         self._log = structlog.get_logger()
@@ -78,6 +80,12 @@ class WorkerPool:
         log.debug("worker_started")
 
         while not self._stop_event.is_set():
+            # Token-budget clutch: sleep until disengaged.
+            if is_clutch_engaged():
+                log.info("clutch_engaged", sleep_seconds=self._clutch_interval)
+                self._stop_event.wait(self._clutch_interval)
+                continue
+
             task = claim_task()
             if task is None:
                 self._stop_event.wait(self._poll_interval)

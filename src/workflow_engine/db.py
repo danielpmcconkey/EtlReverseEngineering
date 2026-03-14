@@ -1,7 +1,8 @@
 """Postgres storage layer for the task queue and job state.
 
-Provides: get_pool, close_pool, ensure_schema, enqueue_task, claim_task,
-complete_task, fail_task, save_job_state, load_job_state.
+Provides: get_pool, close_pool, ensure_schema, is_clutch_engaged,
+enqueue_task, claim_task, complete_task, fail_task, save_job_state,
+load_job_state.
 """
 
 from __future__ import annotations
@@ -47,6 +48,21 @@ def ensure_schema() -> None:
     pool = get_pool()
     with pool.connection() as conn:
         conn.execute(sql)
+
+
+# -- Engine config ------------------------------------------------------------
+
+
+def is_clutch_engaged() -> bool:
+    """Check whether the token-budget clutch is engaged."""
+    pool = get_pool()
+    with pool.connection() as conn:
+        row = conn.execute(
+            "SELECT clutch_engaged FROM control.re_engine_config WHERE id = 1"
+        ).fetchone()
+        if row is None:
+            return False
+        return bool(row[0])
 
 
 # -- Task queue CRUD ----------------------------------------------------------

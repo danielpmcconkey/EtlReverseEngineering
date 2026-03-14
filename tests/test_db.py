@@ -9,6 +9,7 @@ from workflow_engine.db import (
     enqueue_task,
     fail_task,
     get_pool,
+    is_clutch_engaged,
     load_job_state,
     save_job_state,
 )
@@ -108,6 +109,35 @@ class TestFifoOrder:
             claimed_ids.append(t["id"])
             complete_task(t["id"])
         assert claimed_ids == ids
+
+
+# -- Engine config tests ------------------------------------------------------
+
+
+class TestClutch:
+    def test_clutch_defaults_disengaged(self):
+        assert is_clutch_engaged() is False
+
+    def test_clutch_engages(self):
+        pool = get_pool()
+        with pool.connection() as conn:
+            conn.execute(
+                "UPDATE control.re_engine_config SET clutch_engaged = true WHERE id = 1"
+            )
+        assert is_clutch_engaged() is True
+
+    def test_clutch_disengages(self):
+        pool = get_pool()
+        with pool.connection() as conn:
+            conn.execute(
+                "UPDATE control.re_engine_config SET clutch_engaged = true WHERE id = 1"
+            )
+        assert is_clutch_engaged() is True
+        with pool.connection() as conn:
+            conn.execute(
+                "UPDATE control.re_engine_config SET clutch_engaged = false WHERE id = 1"
+            )
+        assert is_clutch_engaged() is False
 
 
 # -- Job state tests ----------------------------------------------------------

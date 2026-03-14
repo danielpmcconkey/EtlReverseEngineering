@@ -21,6 +21,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS ix_re_task_queue_one_active
     ON control.re_task_queue (job_id)
     WHERE status IN ('pending', 'claimed');
 
+CREATE TABLE IF NOT EXISTS control.re_engine_config (
+    id          integer         PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    clutch_engaged boolean      NOT NULL DEFAULT false,
+    updated_at  timestamptz     NOT NULL DEFAULT now()
+);
+
+-- Seed the single config row if it doesn't exist.
+INSERT INTO control.re_engine_config (id) VALUES (1) ON CONFLICT DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS control.re_job_state (
     job_id              text        PRIMARY KEY,
     current_node        text        NOT NULL DEFAULT 'LocateOgSourceFiles',

@@ -1,0 +1,5 @@
+# Job artifacts are generated at runtime — don't track them.
+# Only this .gitignore and .gitkeep are committed.
+*
+!.gitignore
+!.gitkeep

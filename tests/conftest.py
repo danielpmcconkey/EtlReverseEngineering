@@ -26,5 +26,6 @@ def _clean_tables():
     with pool.connection() as conn:
         conn.execute("TRUNCATE control.re_task_queue RESTART IDENTITY CASCADE")
         conn.execute("TRUNCATE control.re_job_state CASCADE")
+        conn.execute("UPDATE control.re_engine_config SET clutch_engaged = false WHERE id = 1")
     yield
     close_pool()

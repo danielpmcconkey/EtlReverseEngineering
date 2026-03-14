@@ -9,6 +9,7 @@ import pytest
 from workflow_engine.db import (
     complete_task,
     enqueue_task,
+    get_pool,
 )
 from workflow_engine.worker import WorkerPool
 
@@ -151,3 +152,46 @@ class TestWorkerExecution:
         # All threads should be dead
         for t in wp._threads:
             assert not t.is_alive()
+
+
+class TestClutchIntegration:
+    def test_clutch_blocks_task_claiming(self):
+        """When clutch is engaged, workers sleep instead of claiming tasks."""
+        processed = []
+        lock = threading.Lock()
+
+        def handler(task):
+            with lock:
+                processed.append(task["job_id"])
+            complete_task(task["id"])
+
+        enqueue_task("job-clutched", "NodeA")
+
+        # Engage the clutch
+        pool = get_pool()
+        with pool.connection() as conn:
+            conn.execute(
+                "UPDATE control.re_engine_config SET clutch_engaged = true WHERE id = 1"
+            )
+
+        wp = WorkerPool(
+            handler=handler, n_workers=1, poll_interval=0.05, clutch_interval=0.2
+        )
+        wp.start()
+        time.sleep(0.3)  # give the worker time to hit the clutch check
+
+        # Task should NOT have been processed
+        with lock:
+            assert len(processed) == 0
+
+        # Disengage the clutch — worker wakes after short clutch_interval
+        with pool.connection() as conn:
+            conn.execute(
+                "UPDATE control.re_engine_config SET clutch_engaged = false WHERE id = 1"
+            )
+
+        time.sleep(0.5)  # wait for clutch sleep to expire and task to process
+        wp.stop(timeout=2.0)
+
+        with lock:
+            assert processed == ["job-clutched"]
