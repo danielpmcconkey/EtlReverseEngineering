@@ -44,7 +44,6 @@ class StepHandler:
                 blueprints_dir=Path(config.blueprints_dir),
                 jobs_dir=Path(config.jobs_dir),
                 model=config.agent_model,
-                budget=config.agent_budget,
             )
         else:
             rng = random.Random(config.seed) if config.seed is not None else None
@@ -170,6 +169,13 @@ class StepHandler:
     ) -> Outcome:
         """Apply counter logic to a raw node outcome."""
         outcome = raw_outcome
+
+        # FAILURE from executor nodes has explicit transitions (e.g. to triage).
+        # Only promote to FAIL when no transition exists — i.e. agent plumbing
+        # failures (empty output, timeout, bad JSON) on non-executor nodes.
+        if outcome == Outcome.FAILURE:
+            if (node_name, Outcome.FAILURE) not in TRANSITION_TABLE:
+                outcome = Outcome.FAIL
 
         if outcome == Outcome.APPROVE:
             job.conditional_counts[node_name] = 0

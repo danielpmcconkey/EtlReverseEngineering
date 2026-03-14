@@ -68,17 +68,16 @@ class TestIngestManifest:
         assert state.status == "RUNNING"
         assert state.main_retry_count == 0
 
-    def test_returns_task_ids(self):
-        """Returns a list of task IDs matching the number of jobs."""
+    def test_returns_job_ids(self):
+        """Returns a list of job IDs matching the number of jobs."""
         path = self._write_manifest([
             {"job_id": i, "job_name": f"Job{i}", "job_conf_path": f"/{i}.json"}
             for i in range(5)
         ])
-        task_ids = ingest_manifest(path)
-        assert len(task_ids) == 5
-        assert all(isinstance(tid, int) for tid in task_ids)
-        # IDs should be sequential
-        assert task_ids == sorted(task_ids)
+        job_ids = ingest_manifest(path)
+        assert len(job_ids) == 5
+        assert all(isinstance(jid, str) for jid in job_ids)
+        assert job_ids == [str(i) for i in range(5)]
 
     def test_real_manifest_format(self):
         """Works with the actual manifest format (job_id as int)."""
@@ -86,8 +85,9 @@ class TestIngestManifest:
             {"job_id": 1, "job_name": "CustomerAccountSummary",
              "job_conf_path": "{ETL_ROOT}/JobExecutor/Jobs/customer_account_summary.json"},
         ])
-        task_ids = ingest_manifest(path)
-        assert len(task_ids) == 1
+        job_ids = ingest_manifest(path)
+        assert len(job_ids) == 1
+        assert job_ids == ["1"]
 
         state = load_job_state("1")
         assert state is not None

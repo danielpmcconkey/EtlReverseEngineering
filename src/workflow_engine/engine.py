@@ -44,8 +44,7 @@ class Engine:
         configure_logging()
         ensure_schema()
 
-        task_ids = ingest_manifest(manifest_path)
-        job_ids = [str(i) for i in range(len(task_ids))]
+        job_ids = ingest_manifest(manifest_path)
 
         pool = WorkerPool(
             handler=self._handler,

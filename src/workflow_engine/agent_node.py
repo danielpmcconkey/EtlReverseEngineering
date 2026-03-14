@@ -39,14 +39,12 @@ class AgentNode(Node):
         jobs_dir: Path,
         *,
         model: str = "sonnet",
-        budget: float = 0.50,
         sub_agents: dict[str, Any] | None = None,
     ) -> None:
         self.node_name = node_name
         self.blueprint_path = blueprint_path
         self.jobs_dir = jobs_dir
         self.model = model
-        self.budget = budget
         self.sub_agents = sub_agents
 
     def execute(self, job: JobState) -> Outcome:
@@ -77,7 +75,6 @@ class AgentNode(Node):
             "--append-system-prompt", blueprint_text,
             "--output-format", "json",
             "--model", self.model,
-            "--max-budget-usd", str(self.budget),
             "--dangerously-skip-permissions",
             "--no-session-persistence",
         ]
@@ -93,7 +90,6 @@ class AgentNode(Node):
             job_id=job.job_id,
             blueprint=str(self.blueprint_path),
             model=self.model,
-            budget=self.budget,
         )
 
         try:

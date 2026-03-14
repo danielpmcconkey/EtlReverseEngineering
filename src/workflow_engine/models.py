@@ -58,6 +58,5 @@ class EngineConfig:
     seed: int | None = None
     use_agents: bool = False
     agent_model: str = "sonnet"
-    agent_budget: float = 0.50
     blueprints_dir: str = ""
     jobs_dir: str = ""

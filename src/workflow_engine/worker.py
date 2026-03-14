@@ -121,11 +121,19 @@ class WorkerPool:
         while time.monotonic() < deadline:
             pool = get_pool()
             with pool.connection() as conn:
-                row = conn.execute(
+                # Check both queue activity AND running jobs to avoid
+                # the race between complete_task and enqueue_task.
+                queue_row = conn.execute(
                     "SELECT count(*) FROM control.re_task_queue "
                     "WHERE status IN ('pending', 'claimed')"
                 ).fetchone()
-            if row is not None and row[0] == 0:
+                running_row = conn.execute(
+                    "SELECT count(*) FROM control.re_job_state "
+                    "WHERE status = 'RUNNING'"
+                ).fetchone()
+            queue_active = queue_row is not None and queue_row[0] > 0
+            jobs_running = running_row is not None and running_row[0] > 0
+            if not queue_active and not jobs_running:
                 break
             time.sleep(self._poll_interval)
         self.stop()

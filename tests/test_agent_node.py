@@ -34,7 +34,6 @@ def agent_node(tmp_job_env: tuple[Path, Path, Path]) -> AgentNode:
         blueprint_path=bp,
         jobs_dir=jobs_dir,
         model="sonnet",
-        budget=0.25,
     )
 
 
@@ -293,7 +292,6 @@ class TestAgentNodeExecute:
         assert cmd[cmd.index("--output-format") + 1] == "json"
         assert "--model" in cmd
         assert cmd[cmd.index("--model") + 1] == "sonnet"
-        assert "--max-budget-usd" in cmd
         assert "--dangerously-skip-permissions" in cmd
         assert "--append-system-prompt" in cmd
 

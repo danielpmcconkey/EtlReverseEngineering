@@ -228,7 +228,6 @@ def create_agent_registry(
     jobs_dir: Path,
     *,
     model: str = "sonnet",
-    budget: float = 0.50,
 ) -> dict[str, Node]:
     """Create an AgentNode for every node in the workflow.
 
@@ -256,7 +255,6 @@ def create_agent_registry(
             blueprint_path=bp_path,
             jobs_dir=jobs_dir,
             model=model,
-            budget=budget,
             sub_agents=sub_agents,
         )
 
