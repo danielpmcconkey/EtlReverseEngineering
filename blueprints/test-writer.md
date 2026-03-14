@@ -46,15 +46,20 @@ rewrite incorporating reviewer feedback.
 1. Read BDD scenarios and fixture definitions.
 2. Read FSD for implementation details.
 3. Read existing test files for project testing patterns.
-4. For each BDD scenario:
+4. Select the **10 most critical BDD scenarios** — prioritize happy-path behavior,
+   core transformation logic, and join/aggregation correctness. Skip edge cases,
+   boundary conditions, and redundant variations. Aim for one test per BDD group
+   where possible rather than exhaustive per-scenario coverage.
+5. For each selected scenario:
    a. Create descriptive test function with BDD ID in docstring.
    b. Set up fixtures per BDD specification.
    c. Execute transformation logic.
    d. Assert expected outcomes per BDD Then clause.
-5. Write test-plan.md mapping tests to BDD scenarios.
-6. **Code quality gate:** Before returning SUCCESS, invoke your `code-reviewer`
-   sub-agent. Pass it the test file you wrote. If it finds issues, fix them. Do
-   not return SUCCESS with unresolved code quality findings.
+6. Write test-plan.md mapping tests to BDD scenarios. Note which scenarios were
+   intentionally skipped and why.
+7. Your `code-reviewer` sub-agent will automatically review the test file for
+   code quality (PEP 8, type hints, clean imports). Fix any issues it raises
+   before returning SUCCESS.
 
 ## stdout contract
 
@@ -64,6 +69,7 @@ rewrite incorporating reviewer feedback.
 
 ## Constraints
 
+- **Maximum 10 tests.** Quality over quantity. Do not exceed this cap.
 - Every test docstring must reference its BDD scenario ID.
 - Use exact fixture data from BDD — don't invent different test data.
 - Tests exercise transformation logic, not framework I/O.

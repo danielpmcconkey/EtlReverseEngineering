@@ -1,31 +1,17 @@
-"""Shared fixtures for workflow engine tests."""
+"""TEST SUITE DISABLED — DO NOT RUN.
 
-import pytest
+The test harness truncated production data twice (job 373).
+Tests are disabled until the harness is rebuilt with proper
+environment separation and non-destructive cleanup.
 
-from workflow_engine.db import close_pool, ensure_schema, get_pool
-from workflow_engine.models import EngineConfig, JobState
+See: POC6/BDsNotes/bd-wakeup-poc6-session16.md
+"""
 
+import sys
 
-@pytest.fixture
-def fresh_job_state() -> JobState:
-    """Return a fresh JobState with a test job_id."""
-    return JobState(job_id="test-job-001")
-
-
-@pytest.fixture
-def default_config() -> EngineConfig:
-    """Return an EngineConfig with all defaults."""
-    return EngineConfig()
-
-
-@pytest.fixture(autouse=True)
-def _clean_tables():
-    """Truncate re_ tables before each test, close pool after."""
-    ensure_schema()
-    pool = get_pool()
-    with pool.connection() as conn:
-        conn.execute("TRUNCATE control.re_task_queue RESTART IDENTITY CASCADE")
-        conn.execute("TRUNCATE control.re_job_state CASCADE")
-        conn.execute("UPDATE control.re_engine_config SET clutch_engaged = false WHERE id = 1")
-    yield
-    close_pool()
+print("\n" + "=" * 60)
+print("TEST SUITE DISABLED")
+print("The harness nuked prod data. Fix it before running tests.")
+print("See bd-wakeup-poc6-session16.md for the plan.")
+print("=" * 60 + "\n")
+sys.exit(1)

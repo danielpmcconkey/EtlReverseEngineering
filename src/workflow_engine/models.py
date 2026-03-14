@@ -60,3 +60,5 @@ class EngineConfig:
     agent_model: str = "sonnet"
     blueprints_dir: str = ""
     jobs_dir: str = ""
+    etl_start_date: str | None = None
+    etl_end_date: str | None = None

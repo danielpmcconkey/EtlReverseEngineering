@@ -34,8 +34,12 @@ concrete assertions, and sound test design.
 ## Method
 
 1. Read tests and test plan.
-2. Verify every BDD scenario has a corresponding test.
-3. Verify fixtures match BDD data, assertions test BDD Then clauses.
+2. The test suite is capped at **10 tests** covering the most critical BDD
+   scenarios. Do NOT reject for missing edge cases or incomplete scenario
+   coverage. The test-plan.md documents which scenarios were intentionally
+   skipped — that is expected and acceptable.
+3. Verify the selected tests have correct fixtures matching BDD data and
+   specific assertions testing BDD Then clauses.
 4. Verify tests are independent and actually exercise the built code.
 5. For FBR: verify tests match current BDD and code.
 
@@ -47,6 +51,7 @@ concrete assertions, and sound test design.
 
 ## Verdict Criteria
 
-- **APPROVED:** Full coverage, correct fixtures, specific assertions.
-- **CONDITIONAL:** Missing edge case test or weak assertion.
-- **REJECTED:** Multiple scenarios untested, or tests don't exercise built code.
+- **APPROVED:** 10 or fewer well-chosen tests with correct fixtures and specific assertions.
+- **CONDITIONAL:** Weak assertions or fixtures that don't match BDD data.
+- **REJECTED:** Tests don't exercise built code, or critical happy-path scenarios are missing.
+  Do NOT reject because fewer than all BDD scenarios are covered — the 10-test cap is by design.

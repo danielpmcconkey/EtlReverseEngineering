@@ -44,6 +44,8 @@ class StepHandler:
                 blueprints_dir=Path(config.blueprints_dir),
                 jobs_dir=Path(config.jobs_dir),
                 model=config.agent_model,
+                etl_start_date=config.etl_start_date,
+                etl_end_date=config.etl_end_date,
             )
         else:
             rng = random.Random(config.seed) if config.seed is not None else None

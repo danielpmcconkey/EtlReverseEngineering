@@ -32,6 +32,14 @@ _OUTCOME_MAP: dict[str, Outcome] = {
 class AgentNode(Node):
     """Executes a workflow step by invoking Claude CLI with a blueprint."""
 
+    # Nodes that need ETL effective date range in their prompt.
+    _DATE_AWARE_NODES: set[str] = {
+        "ExecuteJobRuns",
+        "ExecuteProofmark",
+        "FinalSignOff",
+        "FBR_EvidenceAudit",
+    }
+
     def __init__(
         self,
         node_name: str,
@@ -40,12 +48,16 @@ class AgentNode(Node):
         *,
         model: str = "sonnet",
         sub_agents: dict[str, Any] | None = None,
+        etl_start_date: str | None = None,
+        etl_end_date: str | None = None,
     ) -> None:
         self.node_name = node_name
         self.blueprint_path = blueprint_path
         self.jobs_dir = jobs_dir
         self.model = model
         self.sub_agents = sub_agents
+        self.etl_start_date = etl_start_date
+        self.etl_end_date = etl_end_date
 
     def execute(self, job: JobState) -> Outcome:
         job_dir = self.jobs_dir / job.job_id
@@ -68,6 +80,18 @@ class AgentNode(Node):
 
         if job.last_rejection_reason:
             prompt += f"Last rejection reason: {job.last_rejection_reason}\n"
+
+        if self.node_name in self._DATE_AWARE_NODES:
+            if self.etl_start_date and self.etl_end_date:
+                prompt += (
+                    f"ETL effective date range: {self.etl_start_date} through {self.etl_end_date}\n"
+                    f"Run/validate ALL dates in this range. No sampling, no skipping.\n"
+                )
+            else:
+                prompt += (
+                    "WARNING: No ETL effective date range provided via CLI. "
+                    "Cannot execute without --etl-start-date and --etl-end-date.\n"
+                )
 
         cmd = [
             "claude",

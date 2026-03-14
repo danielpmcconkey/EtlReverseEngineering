@@ -3,6 +3,8 @@
 import pytest
 import psycopg
 
+from tests.conftest import make_test_job_id
+
 from workflow_engine.db import (
     claim_task,
     complete_task,
@@ -32,42 +34,49 @@ class TestPool:
 
 class TestEnqueueTask:
     def test_enqueue_returns_id(self):
-        task_id = enqueue_task("job-1", "LocateOgSourceFiles")
+        jid = make_test_job_id("enq")
+        task_id = enqueue_task(jid, "LocateOgSourceFiles")
         assert isinstance(task_id, int)
         assert task_id > 0
 
     def test_enqueue_duplicate_active_raises(self):
-        enqueue_task("job-1", "LocateOgSourceFiles")
+        jid = make_test_job_id("dup")
+        enqueue_task(jid, "LocateOgSourceFiles")
         with pytest.raises(psycopg.errors.UniqueViolation):
-            enqueue_task("job-1", "SomeOtherNode")
+            enqueue_task(jid, "SomeOtherNode")
 
 
 class TestClaimTask:
     def test_claim_returns_oldest_pending(self):
-        id1 = enqueue_task("job-1", "NodeA")
-        _id2 = enqueue_task("job-2", "NodeB")
+        jid1 = make_test_job_id("c1")
+        jid2 = make_test_job_id("c2")
+        id1 = enqueue_task(jid1, "NodeA")
+        _id2 = enqueue_task(jid2, "NodeB")
         claimed = claim_task()
         assert claimed is not None
         assert claimed["id"] == id1
-        assert claimed["job_id"] == "job-1"
+        assert claimed["job_id"] == jid1
         assert claimed["node_name"] == "NodeA"
 
     def test_claim_returns_none_when_empty(self):
         assert claim_task() is None
 
     def test_claim_skips_already_claimed(self):
-        enqueue_task("job-1", "NodeA")
-        enqueue_task("job-2", "NodeB")
+        jid1 = make_test_job_id("s1")
+        jid2 = make_test_job_id("s2")
+        enqueue_task(jid1, "NodeA")
+        enqueue_task(jid2, "NodeB")
         first = claim_task()
         second = claim_task()
         assert first is not None and second is not None
-        assert first["job_id"] == "job-1"
-        assert second["job_id"] == "job-2"
+        assert first["job_id"] == jid1
+        assert second["job_id"] == jid2
 
 
 class TestCompleteTask:
     def test_complete_sets_status(self):
-        task_id = enqueue_task("job-1", "NodeA")
+        jid = make_test_job_id("comp")
+        task_id = enqueue_task(jid, "NodeA")
         claimed = claim_task()
         assert claimed is not None
         complete_task(task_id)
@@ -84,7 +93,8 @@ class TestCompleteTask:
 
 class TestFailTask:
     def test_fail_sets_status(self):
-        task_id = enqueue_task("job-1", "NodeA")
+        jid = make_test_job_id("fail")
+        task_id = enqueue_task(jid, "NodeA")
         claim_task()
         fail_task(task_id)
         pool = get_pool()
@@ -101,7 +111,8 @@ class TestFailTask:
 class TestFifoOrder:
     def test_fifo_ordering(self):
         """Tasks are claimed in creation order."""
-        ids = [enqueue_task(f"job-{i}", f"Node{i}") for i in range(3)]
+        jids = [make_test_job_id(f"fifo{i}") for i in range(3)]
+        ids = [enqueue_task(jid, f"Node{i}") for i, jid in enumerate(jids)]
         claimed_ids = []
         for _ in range(3):
             t = claim_task()
@@ -145,32 +156,35 @@ class TestClutch:
 
 class TestSaveLoadJobState:
     def test_save_and_load(self):
-        state = JobState(job_id="job-42", current_node="CheckReview", status="RUNNING")
+        jid = make_test_job_id("sl")
+        state = JobState(job_id=jid, current_node="CheckReview", status="RUNNING")
         save_job_state(state)
-        loaded = load_job_state("job-42")
+        loaded = load_job_state(jid)
         assert loaded is not None
-        assert loaded.job_id == "job-42"
+        assert loaded.job_id == jid
         assert loaded.current_node == "CheckReview"
         assert loaded.status == "RUNNING"
 
     def test_load_nonexistent_returns_none(self):
-        assert load_job_state("nope") is None
+        assert load_job_state(make_test_job_id("nope")) is None
 
     def test_upsert_overwrites(self):
-        state = JobState(job_id="job-42")
+        jid = make_test_job_id("upsert")
+        state = JobState(job_id=jid)
         save_job_state(state)
         state.current_node = "FullBuildReview"
         state.main_retry_count = 3
         save_job_state(state)
-        loaded = load_job_state("job-42")
+        loaded = load_job_state(jid)
         assert loaded is not None
         assert loaded.current_node == "FullBuildReview"
         assert loaded.main_retry_count == 3
 
     def test_round_trip_all_fields(self):
         """Every field survives a save/load round trip including nested dicts."""
+        jid = make_test_job_id("roundtrip")
         state = JobState(
-            job_id="job-99",
+            job_id=jid,
             current_node="TriageNode",
             status="RUNNING",
             main_retry_count=2,
@@ -181,7 +195,7 @@ class TestSaveLoadJobState:
             triage_rewind_target="LocateOgSourceFiles",
         )
         save_job_state(state)
-        loaded = load_job_state("job-99")
+        loaded = load_job_state(jid)
         assert loaded is not None
         assert loaded.job_id == state.job_id
         assert loaded.current_node == state.current_node

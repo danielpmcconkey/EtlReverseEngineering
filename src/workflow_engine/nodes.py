@@ -228,6 +228,8 @@ def create_agent_registry(
     jobs_dir: Path,
     *,
     model: str = "sonnet",
+    etl_start_date: str | None = None,
+    etl_end_date: str | None = None,
 ) -> dict[str, Node]:
     """Create an AgentNode for every node in the workflow.
 
@@ -256,6 +258,8 @@ def create_agent_registry(
             jobs_dir=jobs_dir,
             model=model,
             sub_agents=sub_agents,
+            etl_start_date=etl_start_date,
+            etl_end_date=etl_end_date,
         )
 
     return registry

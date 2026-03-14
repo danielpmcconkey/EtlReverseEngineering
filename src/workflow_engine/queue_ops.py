@@ -14,7 +14,6 @@ import structlog
 
 from workflow_engine.db import (
     enqueue_task,
-    get_pool,
     load_job_state,
     save_job_state,
 )
@@ -30,7 +29,8 @@ def ingest_manifest(manifest_path: str | Path) -> list[str]:
     """Load a job manifest and enqueue tasks for every job.
 
     For new jobs, creates initial state and enqueues the first node.
-    For existing RUNNING jobs, resumes from their current node.
+    For existing RUNNING jobs, enqueues their current_node — assumes
+    a human has already cleaned up state to the right resume point.
     Completed and dead-lettered jobs are skipped.
     Returns a list of job IDs that were enqueued.
     """
@@ -51,21 +51,10 @@ def ingest_manifest(manifest_path: str | Path) -> list[str]:
                     "ingest_skip",
                     job_id=job_id,
                     status=existing.status,
-                    reason="terminal state",
                 )
                 continue
 
-            # Clear any stale claimed/pending tasks from a crashed run
-            pool = get_pool()
-            with pool.connection() as conn:
-                conn.execute(
-                    "UPDATE control.re_task_queue "
-                    "SET status = 'failed', completed_at = now() "
-                    "WHERE job_id = %s AND status IN ('pending', 'claimed')",
-                    (job_id,),
-                )
-
-            # Resume from current node
+            # Resume: trust that state has been set to the right node externally.
             log.info(
                 "ingest_resume",
                 job_id=job_id,
@@ -75,7 +64,6 @@ def ingest_manifest(manifest_path: str | Path) -> list[str]:
             enqueue_task(job_id, existing.current_node)
             job_ids.append(job_id)
         else:
-            # Fresh job
             state = JobState(job_id=job_id)
             save_job_state(state)
             enqueue_task(job_id, first_node)

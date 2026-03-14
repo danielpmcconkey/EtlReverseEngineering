@@ -52,6 +52,14 @@ def main() -> None:
         "--timeout", type=float, default=3600.0,
         help="Max seconds to wait for all jobs to complete (default: 3600).",
     )
+    parser.add_argument(
+        "--etl-start-date",
+        help="First effective date for ETL execution and validation (YYYY-MM-DD).",
+    )
+    parser.add_argument(
+        "--etl-end-date",
+        help="Last effective date for ETL execution and validation (YYYY-MM-DD).",
+    )
     args = parser.parse_args()
 
     config = EngineConfig(
@@ -62,6 +70,8 @@ def main() -> None:
         blueprints_dir=args.blueprints_dir,
         jobs_dir=args.jobs_dir,
         agent_model=args.model,
+        etl_start_date=args.etl_start_date,
+        etl_end_date=args.etl_end_date,
     )
     engine = Engine(config)
     results = engine.run(args.manifest_path, timeout=args.timeout)
