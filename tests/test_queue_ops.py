@@ -85,10 +85,10 @@ class TestEnqueueNext:
         assert claimed is not None
         assert claimed["node_name"] == "WriteBrd"
 
-    def test_final_signoff_approve_returns_none(self):
-        """FinalSignOff APPROVE -> COMPLETE, returns None (no next task)."""
-        task_id = self._setup_task("job-1", "FinalSignOff")
-        new_id = enqueue_next(task_id, "job-1", "FinalSignOff", Outcome.APPROVE)
+    def test_evidence_audit_approve_returns_none(self):
+        """FBR_EvidenceAudit APPROVE -> COMPLETE, returns None (no next task)."""
+        task_id = self._setup_task("job-1", "FBR_EvidenceAudit")
+        new_id = enqueue_next(task_id, "job-1", "FBR_EvidenceAudit", Outcome.APPROVE)
 
         assert new_id is None
 

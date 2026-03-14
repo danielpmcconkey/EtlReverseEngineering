@@ -103,7 +103,7 @@ def _run_job_via_queue(handler: StepHandler, job_id: str, start_node: str = None
 
 
 class TestHappyPathTraversal:
-    """Verify a single job traverses all 27 nodes to COMPLETE via queue."""
+    """Verify a single job traverses all 28 nodes to COMPLETE via queue."""
 
     def test_happy_path_traversal(self) -> None:
         _capture_logs()
@@ -130,14 +130,14 @@ class TestHappyPathTraversal:
             assert not missing, f"Missing keys {missing} in transition log: {t}"
 
     def test_log_completeness(self) -> None:
-        """A happy-path job produces exactly 27 transition log entries."""
+        """A happy-path job produces exactly 28 transition log entries."""
         cap = _capture_logs()
         config = EngineConfig(n_jobs=1, seed=None)
         handler = StepHandler(config)
         _run_job_via_queue(handler, "complete-log-001")
 
         transitions = [e for e in cap if e.get("event") == "transition"]
-        assert len(transitions) == 27, f"Expected 27, got {len(transitions)}"
+        assert len(transitions) == 28, f"Expected 28, got {len(transitions)}"
 
         logged_nodes = [t["node"] for t in transitions]
         assert logged_nodes == HAPPY_PATH
@@ -389,6 +389,32 @@ class TestFBRGauntlet:
         assert nodes_visited[response_idx + 2] == "FBR_BrdCheck"
         assert result.fbr_return_pending is False
         assert result.status == "COMPLETE"
+
+    def test_fbr_evidence_audit_approved(self) -> None:
+        """FBR_EvidenceAudit APPROVED → COMPLETE (final node in happy path)."""
+        cap = _capture_logs()
+        handler = self._make_handler()
+        result = _run_job_via_queue(handler, "evidence-pass")
+
+        transitions = [e for e in cap if e.get("event") == "transition"]
+        nodes_visited = [t["node"] for t in transitions]
+
+        assert nodes_visited[-1] == "FBR_EvidenceAudit"
+        assert transitions[-1]["next_node"] == "COMPLETE"
+        assert result.status == "COMPLETE"
+
+    def test_fbr_evidence_audit_fail_dead_letters(self) -> None:
+        """FBR_EvidenceAudit FAIL → immediate DEAD_LETTER, no retry."""
+        cap = _capture_logs()
+        handler = self._make_handler()
+        handler._registry["FBR_EvidenceAudit"] = ScriptedNode(
+            [Outcome.FAIL], default=Outcome.APPROVE
+        )
+        result = _run_job_via_queue(handler, "evidence-fail")
+
+        assert result.status == "DEAD_LETTER"
+        assert result.current_node == "FBR_EvidenceAudit"
+        assert result.main_retry_count == 1
 
     def test_fbr_conditional_auto_promotes_to_fail(self) -> None:
         """FBR gate: M consecutive CONDITIONALs auto-promotes to FAIL."""

@@ -16,12 +16,12 @@ class TestTransitionTable:
     def test_table_is_dict(self) -> None:
         assert isinstance(TRANSITION_TABLE, dict)
 
-    def test_happy_path_has_27_nodes(self) -> None:
-        assert len(HAPPY_PATH) == 27
+    def test_happy_path_has_28_nodes(self) -> None:
+        assert len(HAPPY_PATH) == 28
 
     def test_happy_path_order(self) -> None:
         assert HAPPY_PATH[0] == "LocateOgSourceFiles"
-        assert HAPPY_PATH[-1] == "FinalSignOff"
+        assert HAPPY_PATH[-1] == "FBR_EvidenceAudit"
 
     def test_every_happy_path_node_has_outbound_edge(self) -> None:
         for node in HAPPY_PATH:
@@ -141,13 +141,13 @@ class TestReviewRouting:
             )
 
     def test_transition_table_total_edge_count(self) -> None:
-        """TRANSITION_TABLE has 27 happy-path edges + 18 review branching edges = 45 minimum.
+        """TRANSITION_TABLE has 28 happy-path edges + 18 review branching edges = 46 minimum.
 
-        27 happy-path (WORK SUCCESS + REVIEW APPROVE)
-        + 6 CONDITIONAL edges + 6 FAIL edges + 6 response SUCCESS edges = 45
-        Plus optional TriageProofmarkFailures -> 46 max.
+        28 happy-path (WORK SUCCESS + REVIEW APPROVE)
+        + 6 CONDITIONAL edges + 6 FAIL edges + 6 response SUCCESS edges = 46
+        Plus FBR branching + triage edges.
         """
-        assert len(TRANSITION_TABLE) >= 45
+        assert len(TRANSITION_TABLE) >= 46
 
     def test_validate_transition_table_still_passes(self) -> None:
         """validate_transition_table() must still return empty list (no regression)."""

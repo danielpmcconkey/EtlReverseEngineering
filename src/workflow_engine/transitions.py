@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from workflow_engine.models import NodeType, Outcome
 
-# All 27 happy-path nodes in execution order.
+# All 28 happy-path nodes in execution order.
 HAPPY_PATH: list[str] = [
     "LocateOgSourceFiles",      # 1  - Plan
     "InventoryOutputs",         # 2  - Plan
@@ -36,6 +36,7 @@ HAPPY_PATH: list[str] = [
     "ExecuteJobRuns",           # 25 - Validate
     "ExecuteProofmark",         # 26 - Validate
     "FinalSignOff",             # 27 - Validate
+    "FBR_EvidenceAudit",        # 28 - Validate (terminal gate)
 ]
 
 # Node type classification: REVIEW for review/gate nodes, WORK for everything else.
@@ -52,6 +53,7 @@ _REVIEW_NODES: set[str] = {
     "FBR_ArtifactCheck",
     "FBR_ProofmarkCheck",
     "FBR_UnitTestCheck",
+    "FBR_EvidenceAudit",
     "FinalSignOff",
 }
 
@@ -115,6 +117,22 @@ FBR_ROUTING: dict[str, tuple[str, str]] = {
 for _fbr_gate, (_response_node, _rewind_target) in FBR_ROUTING.items():
     TRANSITION_TABLE[(_fbr_gate, Outcome.CONDITIONAL)] = _response_node
     TRANSITION_TABLE[(_fbr_gate, Outcome.FAIL)] = _rewind_target
+
+# FBR_EvidenceAudit: terminal gate. APPROVED advances, FAIL/REJECTED → DEAD_LETTER.
+# Not in FBR_ROUTING — no response node, no rewind, no retry.
+# CONDITIONAL is not a valid outcome for this gate (blueprint enforces APPROVED/REJECTED only).
+
+# Executor failure routing: ExecuteUnitTests and ExecuteJobRuns FAIL → DEAD_LETTER.
+# These agents have a built-in 3-attempt leash; if they return FAIL, it's beyond
+# autonomous repair. No orchestrator retry.
+
+# Nodes where FAIL immediately triggers DEAD_LETTER (no retry count check).
+# Nodes where FAIL immediately triggers DEAD_LETTER (no retry count check).
+# FBR_EvidenceAudit is a terminal gate — if traceability is broken, the whole
+# RE attempt is suspect. No rewind, no retry. Human triages from the findings.
+TERMINAL_FAIL_NODES: set[str] = {
+    "FBR_EvidenceAudit",
+}
 
 # Triage pipeline: 7-step diagnostic sub-pipeline entered on ExecuteProofmark FAILURE.
 TRIAGE_NODES: list[str] = [

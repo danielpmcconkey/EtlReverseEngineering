@@ -25,6 +25,7 @@ from workflow_engine.transitions import (
     FBR_ROUTING,
     HAPPY_PATH,
     REVIEW_ROUTING,
+    TERMINAL_FAIL_NODES,
     TRANSITION_TABLE,
 )
 
@@ -192,6 +193,10 @@ class StepHandler:
             job.main_retry_count += 1
             job.last_rejection_reason = f"FAIL at {node_name}"
 
+            if node_name in TERMINAL_FAIL_NODES:
+                job.status = "DEAD_LETTER"
+                return outcome
+
             if job.main_retry_count >= self._config.max_main_retries:
                 job.status = "DEAD_LETTER"
                 return outcome
@@ -218,3 +223,24 @@ class StepHandler:
         for node_name in list(job.conditional_counts):
             if node_name in downstream_nodes:
                 job.conditional_counts[node_name] = 0
+
+        # Clean up stale process artifacts from re-walked nodes.
+        if self._config.use_agents and self._config.jobs_dir:
+            self._cleanup_stale_artifacts(job.job_id, downstream_nodes)
+
+    def _cleanup_stale_artifacts(
+        self, job_id: str, nodes_to_clean: set[str]
+    ) -> None:
+        """Remove process artifacts for nodes being re-walked so agents start fresh."""
+        process_dir = Path(self._config.jobs_dir) / job_id / "process"
+        if not process_dir.exists():
+            return
+        for node_name in nodes_to_clean:
+            artifact = process_dir / f"{node_name}.json"
+            if artifact.exists():
+                artifact.unlink()
+                self._log.info(
+                    "artifact_cleanup",
+                    job_id=job_id,
+                    removed=str(artifact),
+                )

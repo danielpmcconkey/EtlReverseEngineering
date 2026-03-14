@@ -114,6 +114,7 @@ _NODE_DESCRIPTIONS: dict[str, str] = {
     "FBR_ArtifactCheck": "artifact-reviewer: Final build review gate verifying artifact consistency",
     "FBR_ProofmarkCheck": "proofmark-reviewer: Final build review gate verifying proofmark config",
     "FBR_UnitTestCheck": "test-reviewer: Final build review gate verifying unit test coverage",
+    "FBR_EvidenceAudit": "evidence-auditor: Mechanical verification of all traceability links and citations",
     "ExecuteJobRuns": "job-executor: Executes the ETL job against real data",
     "ExecuteProofmark": "proofmark-executor: Runs proofmark comparison against job output",
     "FinalSignOff": "signoff: Final human-equivalent sign-off on the completed job",
