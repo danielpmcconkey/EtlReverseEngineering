@@ -90,7 +90,11 @@ Plans:
   2. A worker can claim a task via `SELECT ... FOR UPDATE SKIP LOCKED` and no other concurrent caller gets the same row
   3. Job state can be written to and read from Postgres by any caller — not tied to a process or thread
   4. At most one active task per job exists on the queue at any given time
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Schema DDL, psycopg3 connection pool, task queue and job state CRUD with tests
+- [ ] 04-02-PLAN.md — Concurrency proof: SKIP LOCKED double-claim prevention, one-active-per-job constraint tests
 
 ### Phase 5: Queue Write Paths
 **Goal**: Tasks flow through the queue automatically — completion enqueues the next step, and loading a manifest enqueues the first task for every job
@@ -134,7 +138,7 @@ Plans:
 | 1. Foundation and Happy Path Engine | v0.1 | 2/2 | Complete | 2026-03-13 |
 | 2. Review Branching and Counter Mechanics | v0.1 | 2/2 | Complete | 2026-03-13 |
 | 3. FBR Gauntlet, Triage, and Validation Run | v0.1 | 2/2 | Complete | 2026-03-13 |
-| 4. Postgres Foundations | v0.2 | 0/TBD | Not started | - |
+| 4. Postgres Foundations | v0.2 | 0/2 | Planning | - |
 | 5. Queue Write Paths | v0.2 | 0/TBD | Not started | - |
 | 6. Worker Pool | v0.2 | 0/TBD | Not started | - |
 | 7. State Machine Wiring and Tests | v0.2 | 0/TBD | Not started | - |
