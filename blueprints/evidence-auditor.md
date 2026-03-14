@@ -73,7 +73,7 @@ needs to be justified with evidence so strong that Pat can't poke a hole in it.
 
 **Source material:**
 - OG C# code at `{OG_CS_ROOT}/` — to verify citations against actual source
-- OG output at `{OG_CURATED}/` — to verify data claims
+- OG output at `{ETL_ROOT}/Output/curated/` — to verify data claims
 - RE output — to verify Proofmark claims against actual data
 
 ---

@@ -30,7 +30,7 @@ feedback.
 
 **Source material:**
 - Python framework docs at `{FW_DOCS}/` — module reference
-- Existing external modules at `/workspace/MockEtlFrameworkPython/src/etl/modules/externals/`
+- Existing external modules at `{ETL_ROOT}/src/etl/modules/externals/`
   — reference for code style and module interface patterns
 
 ## Writes

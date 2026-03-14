@@ -6,16 +6,17 @@
 
 ## Role
 
-Coordinate Proofmark validation: queue comparison tasks for all effective
-dates, monitor results, produce a consolidated report. Proofmark runs on the
-host — you queue tasks into the database and read results after the host-side
-service processes them.
+Queue Proofmark comparison tasks for all effective dates, monitor results,
+produce a consolidated report. Proofmark runs on the host — you insert tasks
+into `control.proofmark_test_queue` and read results after the host-side
+service processes them. You do NOT run Proofmark locally.
 
 ## Context Provided by Orchestrator
 
 - `job_id`, `job_name`, `job_dir`
 - `effective_dates`: Dates to validate
-- `db_connection`: Postgres connection details
+- `db_connection`: Postgres connection details (host: `172.18.0.1`, port: `5432`,
+  user: `claude`, database: `atc`)
 
 ## Reads
 
@@ -26,8 +27,8 @@ service processes them.
 - `{job_dir}/artifacts/proofmark-config.yaml`
 
 **Source material:**
-- OG output at `{OG_CURATED}/{job_dir_name}/`
-- RE output (produced by job-executor)
+- OG output at `{ETL_ROOT}/Output/curated/{job_name}/` (read-only Docker mount)
+- RE output at `{ETL_ROOT}/Output/re-curated/{job_name}/` (produced by job-executor via host)
 
 ## Writes
 
@@ -42,15 +43,51 @@ service processes them.
 
 ## Method
 
-1. Read proofmark config for path patterns and match rules.
-2. For each date that produced output (per ExecuteJobRuns process artifact):
-   a. Construct OG and RE file paths.
-   b. Insert comparison task into `control.proofmark_test_queue`.
-3. Poll for results until all tasks complete.
-4. Read results from database.
-5. For failures: extract column-level mismatch details.
-6. Write consolidated results.
-7. Return SUCCESS if all dates pass, FAIL if any fail.
+**You cannot run Proofmark locally.** The Proofmark service runs on the host
+and resolves `{ETL_ROOT}` paths from the host environment. You queue tasks
+into the database and read results back.
+
+1. Read the Proofmark config YAML for column match rules.
+2. Read ExecuteJobRuns process artifact for dates that produced output.
+3. For each date that produced output, insert a comparison task:
+   ```sql
+   INSERT INTO control.proofmark_test_queue
+     (config_path, lhs_path, rhs_path, job_key, date_key)
+   VALUES (
+     '{JOB_DIR}/artifacts/proofmark-config.yaml',
+     '{ETL_ROOT}/Output/curated/{job_name}/{date}/',
+     '{ETL_ROOT}/Output/re-curated/{job_name}/{date}/',
+     '{job_name}',
+     '{date}'
+   );
+   ```
+   **Critical:** Use `{ETL_ROOT}` tokens in `lhs_path` and `rhs_path`.
+   The host Proofmark service expands these at runtime. Do NOT use absolute
+   container paths — they mean nothing on the host.
+4. Poll for results until all tasks complete:
+   ```sql
+   SELECT date_key, status, result, error_message
+   FROM control.proofmark_test_queue
+   WHERE job_key = '{job_name}'
+     AND task_id >= {first_task_id}
+   ORDER BY date_key;
+   ```
+   Wait until all rows are `Succeeded` or `Failed`.
+5. For succeeded tasks, read `result` (`PASS` or `FAIL`) and `result_json`.
+6. For failures: extract column-level mismatch details from `result_json`.
+7. Write consolidated results to product artifact.
+8. Return SUCCESS if all dates pass, FAIL if any fail.
+
+## Database Connection
+
+Connect via the Docker bridge gateway — NOT `localhost`:
+```
+Host: 172.18.0.1
+Port: 5432
+User: claude
+Database: atc
+Password: (ETL_DB_PASSWORD env var)
+```
 
 ## stdout contract
 
@@ -64,6 +101,9 @@ or
 
 ## Constraints
 
-- Use the `claude` database role.
+- **Do NOT run Proofmark locally.** No `proofmark serve`, no `python -m proofmark`.
+  Queue via `control.proofmark_test_queue` only.
+- Use `{ETL_ROOT}` tokens in all queue entry paths.
+- Use the `claude` database role via `172.18.0.1`.
 - Only compare dates with both OG and RE output.
 - Capture enough failure detail for triage — column-level mismatches essential.

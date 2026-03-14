@@ -36,7 +36,7 @@ For FBR, also:
 
 **Source material:**
 - OG C# source code (verify cited evidence)
-- OG curated output at `{OG_CURATED}/` (verify schema claims)
+- OG curated output at `{ETL_ROOT}/Output/curated/` (verify schema claims)
 
 ## Writes
 
@@ -54,7 +54,7 @@ No product artifact — review findings live in the process JSON body.
 3. Check completeness: every source, transformation, and output from the plan
    artifacts is covered.
 4. Check accuracy: transformation logic matches actual OG code.
-5. For output schemas, compare against actual OG output at `{OG_CURATED}/`.
+5. For output schemas, compare against actual OG output at `{ETL_ROOT}/Output/curated/`.
 6. For FBR: also check consistency with FSD and built artifacts.
 
 ## stdout contract

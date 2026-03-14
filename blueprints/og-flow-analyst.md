@@ -28,7 +28,7 @@ goes to DEAD_LETTER with no diagnosis. Be thorough.
 **Source material:**
 - OG C# source code — follow paths from og-sources.md. Read the ACTUAL CODE.
 - OG job conf at `{OG_CS_ROOT}/JobExecutor/Jobs/`
-- OG output at `{OG_CURATED}/`
+- OG output at `{ETL_ROOT}/Output/curated/`
 - RE output (the files that failed Proofmark)
 
 ## Writes
@@ -90,7 +90,7 @@ For EACH distinct failing data point identified in the data profile:
 2. After join: {intermediate row, noting which sources contributed}
 3. After aggregation/transform: {computed value, showing the calculation}
 4. Expected output value: {what the OG pipeline should produce}
-5. Actual OG output value: {read from {OG_CURATED} file}
+5. Actual OG output value: {read from {ETL_ROOT}/Output/curated/ file}
 6. Actual RE output value: {read from RE output file}
 7. Discrepancy: {what differs and by how much}
 
