@@ -29,9 +29,12 @@ For FBR, also:
 
 ## Writes
 
-### Process artifact (only on APPROVED or CONDITIONAL)
+### Process artifact (written on ALL outcomes)
 - **File:** `{job_dir}/process/ReviewBdd.json` (or `FBR_BddCheck.json`)
-- **Body:** `{ "brd_requirements_total": N, "brd_requirements_covered": N, "scenarios_concrete": true, "gaps": [] }`
+- **Body:** `{ "outcome": "APPROVED|CONDITIONAL|REJECTED", "reason": "...", "conditions": [], "brd_requirements_total": N, "brd_requirements_covered": N, "scenarios_concrete": true, "gaps": [] }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file on every outcome, including REJECTED.
 
 ## Method
 

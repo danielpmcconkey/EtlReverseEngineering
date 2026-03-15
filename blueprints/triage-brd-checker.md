@@ -29,11 +29,14 @@ goes in the process artifact body for the routing logic in T7.
 
 ## Writes
 
-### Process artifact
+### Process artifact (written on ALL outcomes)
 - **File:** `{job_dir}/process/Triage_CheckBrd.json`
-- **Body:** `{ "verdict": "clean|fault", "fault_reason": "BRD-004 describes SUM but OG uses conditional SUM", "faulty_requirements": ["BRD-004"], "confidence": "high|medium|low" }`
+- **Body:** `{ "outcome": "SUCCESS", "reason": "BRD check complete — verdict: clean|fault", "conditions": [], "verdict": "clean|fault", "fault_reason": "BRD-004 describes SUM but OG uses conditional SUM", "faulty_requirements": ["BRD-004"], "confidence": "high|medium|low" }`
 
 No product artifact — findings live in process JSON.
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST always write this file.
 
 ## Method
 

@@ -51,9 +51,12 @@ When invoked as WriteFsdResponse, rewrite incorporating reviewer feedback.
   (only when justified — see Method step 4), output specs, complete job conf
   JSON, anti-pattern remediation plan, traceability matrix (FSD → BRD + BDD).
 
-### Process artifact
+### Process artifact (written on ALL outcomes — SUCCESS and FAIL)
 - **File:** `{job_dir}/process/WriteFsd.json`
-- **Body:** `{ "spec_count": N, "module_count": N, "has_external_module": false, "anti_patterns_remediated": N, "anti_patterns_persisted": N, "persistence_justifications": ["..."] }`
+- **Body:** `{ "outcome": "SUCCESS|FAIL", "reason": "...", "conditions": [], "spec_count": N, "module_count": N, "has_external_module": false, "anti_patterns_remediated": N, "anti_patterns_persisted": N, "persistence_justifications": ["..."] }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file even on FAIL.
 
 ## Method
 

@@ -26,9 +26,12 @@ get all tests passing in 3 attempts, return FAIL for human review.
 
 ## Writes
 
-### Process artifact
+### Process artifact (written on ALL outcomes — SUCCESS and FAIL)
 - **File:** `{job_dir}/process/ExecuteUnitTests.json`
-- **Body:** `{ "total": N, "passed": N, "failed": N, "errors": N, "attempts": N, "fixes_applied": ["description of fix 1", ...] }`
+- **Body:** `{ "outcome": "SUCCESS|FAIL", "reason": "...", "conditions": [], "total": N, "passed": N, "failed": N, "errors": N, "attempts": N, "fixes_applied": ["description of fix 1", ...] }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file even on FAIL (with diagnostic details).
 
 Updates to product artifacts (if fixes applied):
 - `{job_dir}/artifacts/tests/test_{job_name}.py` (if test bug)

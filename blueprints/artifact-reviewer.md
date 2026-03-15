@@ -30,9 +30,12 @@ and logically.
 
 ## Writes
 
-### Process artifact (only on APPROVED or CONDITIONAL)
+### Process artifact (written on ALL outcomes)
 - **File:** `{job_dir}/process/ReviewJobArtifacts.json` (or `FBR_ArtifactCheck.json`)
-- **Body:** `{ "json_valid": true, "module_count_matches": true, "sql_correct": true, "fsd_compliance": "full", "issues": [] }`
+- **Body:** `{ "outcome": "APPROVED|CONDITIONAL|REJECTED", "reason": "...", "conditions": [], "json_valid": true, "module_count_matches": true, "sql_correct": true, "fsd_compliance": "full", "issues": [] }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file on every outcome, including REJECTED.
 
 ## Method
 

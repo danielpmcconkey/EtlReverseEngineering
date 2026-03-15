@@ -34,9 +34,12 @@ is the "answer key" all downstream artifacts are measured against.
   column schema from actual output files, sample values, row counts, path
   pattern, write mode, trailer format. Always examine real output files.
 
-### Process artifact
+### Process artifact (written on ALL outcomes — SUCCESS and FAIL)
 - **File:** `{job_dir}/process/InventoryOutputs.json`
-- **Body:** `{ "output_count": N, "output_types": ["csv"], "columns": ["col1", "col2"], "sample_date": "2024-10-01" }`
+- **Body:** `{ "outcome": "SUCCESS|FAIL", "reason": "...", "conditions": [], "output_count": N, "output_types": ["csv"], "columns": ["col1", "col2"], "sample_date": "2024-10-01" }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file even on FAIL.
 
 ## Method
 

@@ -31,9 +31,12 @@ attempts. After 3, return FAIL for human review.
 
 ## Writes
 
-### Process artifact
+### Process artifact (written on ALL outcomes — SUCCESS and FAIL)
 - **File:** `{job_dir}/process/ExecuteJobRuns.json`
-- **Body:** `{ "dates_executed": N, "dates_succeeded": N, "dates_failed": N, "failed_dates": [], "attempts": N, "fixes_applied": ["description of fix 1", ...], "output_location": "{ETL_ROOT}/Output/re-curated/{job_name}/" }`
+- **Body:** `{ "outcome": "SUCCESS|FAIL", "reason": "...", "conditions": [], "dates_executed": N, "dates_succeeded": N, "dates_failed": N, "failed_dates": [], "attempts": N, "fixes_applied": ["description of fix 1", ...], "output_location": "{ETL_ROOT}/Output/re-curated/{job_name}/" }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file even on FAIL (with diagnostic details).
 
 Updates to product artifacts (if fixes applied):
 - `{job_dir}/artifacts/code/jobconf.json` or `transforms/` (if code fix needed)

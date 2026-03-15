@@ -39,9 +39,12 @@ feedback.
 - **Job conf:** `{job_dir}/artifacts/code/jobconf.json`
 - **External modules (if applicable):** `{job_dir}/artifacts/code/{module_name}.py`
 
-### Process artifact
+### Process artifact (written on ALL outcomes — SUCCESS and FAIL)
 - **File:** `{job_dir}/process/BuildJobArtifacts.json`
-- **Body:** `{ "artifacts_produced": ["code/jobconf.json"], "module_count": N, "has_external_module": false, "fsd_items_implemented": N }`
+- **Body:** `{ "outcome": "SUCCESS|FAIL", "reason": "...", "conditions": [], "artifacts_produced": ["code/jobconf.json"], "module_count": N, "has_external_module": false, "fsd_items_implemented": N }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file even on FAIL.
 
 ## Method
 

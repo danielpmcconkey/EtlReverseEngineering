@@ -29,9 +29,12 @@ implemented it wrong.
 
 ## Writes
 
-### Process artifact
+### Process artifact (written on ALL outcomes)
 - **File:** `{job_dir}/process/Triage_CheckCode.json`
-- **Body:** `{ "verdict": "clean|fault", "fault_reason": "...", "fault_location": "code/jobconf.json:module[2].sql", "confidence": "high|medium|low" }`
+- **Body:** `{ "outcome": "SUCCESS", "reason": "Code check complete — verdict: clean|fault", "conditions": [], "verdict": "clean|fault", "fault_reason": "...", "fault_location": "code/jobconf.json:module[2].sql", "confidence": "high|medium|low" }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST always write this file.
 
 ## Method
 

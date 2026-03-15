@@ -114,11 +114,14 @@ OG and RE Python implementations:
   is likely in the RE implementation or comparison configuration."}
 ```
 
-### Process artifact
+### Process artifact (written on ALL outcomes — SUCCESS and FAIL)
 - **File:** `{job_dir}/process/Triage_AnalyzeOgFlow.json`
 - **Body:**
 ```json
 {
+  "outcome": "SUCCESS|FAIL",
+  "reason": "...",
+  "conditions": [],
   "findings_significant": true,
   "finding_count": N,
   "finding_summary": "...",
@@ -129,6 +132,9 @@ OG and RE Python implementations:
   "edge_cases_found": N
 }
 ```
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file even on FAIL.
 
 ## Method
 

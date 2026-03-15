@@ -36,11 +36,14 @@ symlinked to the host framework at runtime.
   `{job_dir}/artifacts/code/`
   → `/workspace/MockEtlFrameworkPython/RE/externals/{module_name}.py`
 
-### Process artifact
+### Process artifact (written on ALL outcomes — SUCCESS and FAIL)
 - **File:** `{job_dir}/process/Publish.json`
-- **Body:** `{ "registered_name": "{job_name}_re", "registered_path": "{ETL_ROOT}/RE/Jobs/{job_name}/jobconf.json", "deployed_to": "RE/Jobs/{job_name}/", "external_modules_deployed": N, "control_table": "control.jobs", "verified": true }`
+- **Body:** `{ "outcome": "SUCCESS|FAIL", "reason": "...", "conditions": [], "registered_name": "{job_name}_re", "registered_path": "{ETL_ROOT}/RE/Jobs/{job_name}/jobconf.json", "deployed_to": "RE/Jobs/{job_name}/", "external_modules_deployed": N, "control_table": "control.jobs", "verified": true }`
 
 No separate product artifact — deployment + registration is the deliverable.
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file even on FAIL.
 
 ## Method
 

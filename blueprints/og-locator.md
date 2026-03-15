@@ -33,9 +33,12 @@ No predecessor process artifacts (this is the first node).
   For External modules, include the module name, registered typeName,
   input/output DataFrames, and a summary of the transformation logic.
 
-### Process artifact
+### Process artifact (written on ALL outcomes — SUCCESS and FAIL)
 - **File:** `{job_dir}/process/LocateOgSourceFiles.json`
-- **Body:** `{ "files_found": N, "has_external_modules": true/false, "external_module_classes": ["ClassName"] }`
+- **Body:** `{ "outcome": "SUCCESS|FAIL", "reason": "...", "conditions": [], "files_found": N, "has_external_modules": true/false, "external_module_classes": ["ClassName"] }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file even on FAIL (with reason explaining why).
 
 ## Method
 

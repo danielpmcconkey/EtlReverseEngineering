@@ -39,9 +39,12 @@ or must wait for others.
 - **Content:** Upstream dependencies (jobs this job reads from), downstream
   dependents (jobs that read this job's output), execution order constraints.
 
-### Process artifact
+### Process artifact (written on ALL outcomes — SUCCESS and FAIL)
 - **File:** `{job_dir}/process/NoteDependencies.json`
-- **Body:** `{ "upstream_jobs": [], "downstream_jobs": [], "can_run_independently": true }`
+- **Body:** `{ "outcome": "SUCCESS|FAIL", "reason": "...", "conditions": [], "upstream_jobs": [], "downstream_jobs": [], "can_run_independently": true }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file even on FAIL.
 
 ## Method
 

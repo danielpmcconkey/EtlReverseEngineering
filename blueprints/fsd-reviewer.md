@@ -33,9 +33,12 @@ For FBR, also:
 
 ## Writes
 
-### Process artifact (only on APPROVED or CONDITIONAL)
+### Process artifact (written on ALL outcomes)
 - **File:** `{job_dir}/process/ReviewFsd.json` (or `FBR_FsdCheck.json`)
-- **Body:** `{ "specs_checked": N, "traceability_complete": true, "sql_valid": true, "issues": [] }`
+- **Body:** `{ "outcome": "APPROVED|CONDITIONAL|REJECTED", "reason": "...", "conditions": [], "specs_checked": N, "traceability_complete": true, "sql_valid": true, "issues": [] }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file on every outcome, including REJECTED.
 
 ## Method
 

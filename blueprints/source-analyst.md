@@ -33,9 +33,12 @@ agents exactly what data goes in.
   date column, filters. Join relationships inferred from Transformation SQL.
   External module data access patterns.
 
-### Process artifact
+### Process artifact (written on ALL outcomes — SUCCESS and FAIL)
 - **File:** `{job_dir}/process/InventoryDataSources.json`
-- **Body:** `{ "source_count": N, "tables": ["datalake.customers", "datalake.accounts"], "date_filtered_count": N }`
+- **Body:** `{ "outcome": "SUCCESS|FAIL", "reason": "...", "conditions": [], "source_count": N, "tables": ["datalake.customers", "datalake.accounts"], "date_filtered_count": N }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file even on FAIL.
 
 ## Method
 

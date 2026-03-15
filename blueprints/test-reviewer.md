@@ -27,9 +27,12 @@ concrete assertions, and sound test design.
 
 ## Writes
 
-### Process artifact (only on APPROVED or CONDITIONAL)
+### Process artifact (written on ALL outcomes)
 - **File:** `{job_dir}/process/ReviewUnitTests.json` (or `FBR_UnitTestCheck.json`)
-- **Body:** `{ "bdd_coverage_complete": true, "fixtures_match_bdd": true, "assertions_specific": true, "tests_independent": true }`
+- **Body:** `{ "outcome": "APPROVED|CONDITIONAL|REJECTED", "reason": "...", "conditions": [], "bdd_coverage_complete": true, "fixtures_match_bdd": true, "assertions_specific": true, "tests_independent": true }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file on every outcome, including REJECTED.
 
 ## Method
 

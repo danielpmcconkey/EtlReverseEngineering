@@ -30,9 +30,12 @@ a correct spec, the comparison rules must be wrong.
 
 ## Writes
 
-### Process artifact
+### Process artifact (written on ALL outcomes)
 - **File:** `{job_dir}/process/Triage_CheckProofmark.json`
-- **Body:** `{ "verdict": "clean|fault", "fault_reason": "column 'balance' should be fuzzy(0.01) not strict — trailing zero formatting difference", "recommended_fix": "change 'balance' from strict to fuzzy with tolerance 0.01", "confidence": "high|medium|low" }`
+- **Body:** `{ "outcome": "SUCCESS", "reason": "Proofmark config check — verdict: clean|fault", "conditions": [], "verdict": "clean|fault", "fault_reason": "column 'balance' should be fuzzy(0.01) not strict — trailing zero formatting difference", "recommended_fix": "change 'balance' from strict to fuzzy with tolerance 0.01", "confidence": "high|medium|low" }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST always write this file.
 
 ## Method
 

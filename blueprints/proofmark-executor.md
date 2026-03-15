@@ -42,9 +42,12 @@ service processes them. You do NOT run Proofmark locally.
 - **Content:** Per-date pass/fail, column-level mismatch details for failures,
   overall pass rate.
 
-### Process artifact
+### Process artifact (written on ALL outcomes — SUCCESS and FAIL)
 - **File:** `{job_dir}/process/ExecuteProofmark.json`
-- **Body:** `{ "dates_compared": N, "dates_passed": N, "dates_failed": N, "pass_rate": "100%", "failed_dates": [], "failure_summary": "" }`
+- **Body:** `{ "outcome": "SUCCESS|FAIL", "reason": "...", "conditions": [], "dates_compared": N, "dates_passed": N, "dates_failed": N, "pass_rate": "100%", "failed_dates": [], "failure_summary": "" }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file even on FAIL (with failure details).
 
 ## Method
 

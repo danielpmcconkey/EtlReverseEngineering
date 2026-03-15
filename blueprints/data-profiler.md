@@ -36,9 +36,12 @@ agent consumes your profile.
   values, nulls, match rate, sample differences), missing/extra rows,
   pattern analysis (systematic vs scattered), preliminary classification.
 
-### Process artifact
+### Process artifact (written on ALL outcomes — SUCCESS and FAIL)
 - **File:** `{job_dir}/process/Triage_ProfileData.json`
-- **Body:** `{ "dates_profiled": N, "row_count_mismatches": N, "column_value_mismatches": N, "pattern": "systematic|scattered", "failing_columns": ["col1"] }`
+- **Body:** `{ "outcome": "SUCCESS|FAIL", "reason": "...", "conditions": [], "dates_profiled": N, "row_count_mismatches": N, "column_value_mismatches": N, "pattern": "systematic|scattered", "failing_columns": ["col1"] }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file even on FAIL.
 
 ## Method
 

@@ -28,9 +28,12 @@ notes for downstream agents.
 }
 ```
 
-**Critical rule:** Process artifacts are only written on SUCCESS, APPROVED,
-or CONDITIONAL outcomes. On FAIL or REJECTED, the agent reports via stdout
-only — no process artifact written.
+**Critical rule:** Process artifacts are written on ALL outcomes — SUCCESS,
+APPROVED, CONDITIONAL, FAIL, and REJECTED. The orchestrator reads the
+process artifact file to determine the outcome. On FAIL or REJECTED, the
+process artifact must still contain the standard header with the outcome
+and reason so the orchestrator can route correctly and downstream agents
+(or humans) can see what happened.
 
 ### 2. Product Artifacts (the deliverables)
 
@@ -86,16 +89,16 @@ These are the ONLY valid outcome values:
 The orchestrator reads `outcome`, routes to the next state per the state
 machine, and doesn't interpret anything else.
 
-## Agent Response Contract (stdout)
+## Agent Response Contract (process artifact)
 
-Every agent's stdout must end with a fenced JSON block:
+The orchestrator determines the outcome by reading the process artifact file
+at `{job_dir}/process/{NodeName}.json` after the agent exits. The agent MUST
+write this file on every outcome — SUCCESS, FAIL, APPROVED, CONDITIONAL,
+and REJECTED. The `outcome` field in the process artifact is the source of
+truth for routing.
 
-```json
-{"outcome": "SUCCESS", "reason": "...", "conditions": []}
-```
-
-The orchestrator parses the LAST JSON block from stdout. Everything above it
-is agent reasoning/logging — captured but not parsed.
+Stdout is captured for debugging/logging only — the orchestrator does not
+parse it for routing decisions.
 
 ## What Agents Read
 

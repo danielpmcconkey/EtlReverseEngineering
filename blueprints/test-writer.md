@@ -37,9 +37,12 @@ rewrite incorporating reviewer feedback.
 - **Test file:** `{job_dir}/artifacts/tests/test_{job_name}.py`
 - **Test plan:** `{job_dir}/artifacts/tests/test-plan.md` — BDD-to-test mapping
 
-### Process artifact
+### Process artifact (written on ALL outcomes — SUCCESS and FAIL)
 - **File:** `{job_dir}/process/BuildUnitTests.json`
-- **Body:** `{ "test_count": N, "bdd_scenarios_covered": N, "bdd_scenarios_total": N, "fixtures": ["standard_data", "empty_input"] }`
+- **Body:** `{ "outcome": "SUCCESS|FAIL", "reason": "...", "conditions": [], "test_count": N, "bdd_scenarios_covered": N, "bdd_scenarios_total": N, "fixtures": ["standard_data", "empty_input"] }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file even on FAIL.
 
 ## Method
 

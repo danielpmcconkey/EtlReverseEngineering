@@ -2,7 +2,7 @@
 
 Replaces stub nodes with real Claude CLI agent invocations.
 Each agent gets a blueprint as system prompt, job context as user prompt,
-and must return a structured JSON outcome block.
+and writes its outcome to a process artifact file on disk.
 """
 
 from __future__ import annotations
@@ -136,12 +136,82 @@ class AgentNode(Node):
                 returncode=result.returncode,
                 stderr=result.stderr[:500] if result.stderr else "",
             )
-            return Outcome.FAILURE
+            # Agent crashed — still check if it wrote a process artifact before dying.
+            return self._read_outcome_from_file(job)
 
-        return self._parse_outcome(result.stdout, job)
+        # Primary path: read outcome from the process artifact file the agent wrote.
+        outcome = self._read_outcome_from_file(job)
+        if outcome is not None:
+            return outcome
 
-    def _parse_outcome(self, stdout: str, job: JobState) -> Outcome:
-        """Parse the Claude CLI JSON output and extract the outcome enum."""
+        # Fallback: agent exited cleanly but didn't write a process artifact.
+        # Try parsing stdout as a last resort.
+        log.warning(
+            "artifact_missing_fallback_stdout",
+            node=self.node_name,
+            job_id=job.job_id,
+        )
+        return self._parse_outcome_from_stdout(result.stdout, job)
+
+    def _read_outcome_from_file(self, job: JobState) -> Outcome | None:
+        """Read the outcome from the process artifact file the agent wrote.
+
+        Returns the Outcome enum if the file exists and contains a valid
+        outcome, or None if the file is missing or unparseable.
+        """
+        process_file = self.jobs_dir / job.job_id / "process" / f"{self.node_name}.json"
+        if not process_file.exists():
+            return None
+
+        try:
+            outcome_data = json.loads(process_file.read_text())
+        except (json.JSONDecodeError, OSError) as e:
+            log.error(
+                "artifact_parse_error",
+                node=self.node_name,
+                job_id=job.job_id,
+                error=str(e),
+            )
+            return None
+
+        if not isinstance(outcome_data, dict) or "outcome" not in outcome_data:
+            log.error(
+                "artifact_no_outcome",
+                node=self.node_name,
+                job_id=job.job_id,
+                error="Process artifact missing 'outcome' key",
+            )
+            return None
+
+        outcome_str = outcome_data.get("outcome", "").upper()
+        if outcome_str not in _OUTCOME_MAP:
+            log.error(
+                "artifact_bad_outcome",
+                node=self.node_name,
+                job_id=job.job_id,
+                error=f"Unknown outcome value: {outcome_str}",
+                valid=list(_OUTCOME_MAP.keys()),
+            )
+            return None
+
+        outcome = _OUTCOME_MAP[outcome_str]
+
+        log.info(
+            "agent_result",
+            node=self.node_name,
+            job_id=job.job_id,
+            outcome=outcome_str,
+            reason=outcome_data.get("reason", ""),
+            source="file",
+        )
+
+        return outcome
+
+    def _parse_outcome_from_stdout(self, stdout: str, job: JobState) -> Outcome:
+        """Fallback: parse outcome from Claude CLI stdout JSON.
+
+        Used only when the agent didn't write a process artifact file.
+        """
         try:
             cli_response = json.loads(stdout)
         except json.JSONDecodeError:
@@ -154,11 +224,7 @@ class AgentNode(Node):
             )
             return Outcome.FAILURE
 
-        # Claude CLI --output-format json wraps the response.
-        # The agent's actual text is in the "result" field.
         agent_text = cli_response.get("result", "")
-
-        # Find the last JSON block in the agent's output.
         outcome_data = self._extract_outcome_json(agent_text)
         if outcome_data is None:
             log.error(
@@ -181,19 +247,19 @@ class AgentNode(Node):
             )
             return Outcome.FAILURE
 
-        # Write the process artifact for the next agent.
         outcome = _OUTCOME_MAP[outcome_str]
-        if outcome in (Outcome.SUCCESS, Outcome.APPROVE, Outcome.CONDITIONAL):
-            process_file = self.jobs_dir / job.job_id / "process" / f"{self.node_name}.json"
-            try:
-                process_file.write_text(json.dumps(outcome_data, indent=2))
-            except OSError as e:
-                log.error(
-                    "process_artifact_write_error",
-                    node=self.node_name,
-                    job_id=job.job_id,
-                    error=str(e),
-                )
+
+        # Write the process artifact since the agent didn't.
+        process_file = self.jobs_dir / job.job_id / "process" / f"{self.node_name}.json"
+        try:
+            process_file.write_text(json.dumps(outcome_data, indent=2))
+        except OSError as e:
+            log.error(
+                "process_artifact_write_error",
+                node=self.node_name,
+                job_id=job.job_id,
+                error=str(e),
+            )
 
         log.info(
             "agent_result",
@@ -201,6 +267,7 @@ class AgentNode(Node):
             job_id=job.job_id,
             outcome=outcome_str,
             reason=outcome_data.get("reason", ""),
+            source="stdout_fallback",
         )
 
         return outcome

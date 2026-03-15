@@ -40,11 +40,14 @@ For FBR, also:
 
 ## Writes
 
-### Process artifact (only on APPROVED or CONDITIONAL)
+### Process artifact (written on ALL outcomes)
 - **File:** `{job_dir}/process/ReviewBrd.json` (or `FBR_BrdCheck.json` for FBR)
-- **Body:** `{ "requirements_checked": N, "evidence_verified": N, "issues_found": N, "drift_detected": false }`
+- **Body:** `{ "outcome": "APPROVED|CONDITIONAL|REJECTED", "reason": "...", "conditions": [], "requirements_checked": N, "evidence_verified": N, "issues_found": N, "drift_detected": false }`
 
 No product artifact — review findings live in the process JSON body.
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file on every outcome, including REJECTED.
 
 ## Method
 

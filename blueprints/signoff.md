@@ -41,9 +41,12 @@ Last stop before the job is declared done.
   fuzzy match spot-check (actual values from real files), anti-pattern summary,
   artifact trail completeness, final assessment.
 
-### Process artifact
+### Process artifact (written on ALL outcomes — APPROVED and FAIL)
 - **File:** `{job_dir}/process/FinalSignOff.json`
-- **Body:** `{ "proofmark_pass_rate": "100%", "non_strict_columns_justified": true, "fuzzy_columns_spot_checked": true, "artifact_trail_complete": true, "verdict": "COMPLETE" }`
+- **Body:** `{ "outcome": "APPROVED|FAIL", "reason": "...", "conditions": [], "proofmark_pass_rate": "100%", "non_strict_columns_justified": true, "fuzzy_columns_spot_checked": true, "artifact_trail_complete": true, "verdict": "COMPLETE" }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file even on FAIL.
 
 ## Method
 

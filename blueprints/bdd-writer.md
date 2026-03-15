@@ -34,9 +34,12 @@ When invoked as WriteBddResponse, rewrite incorporating reviewer feedback.
   with concrete values, edge cases, negative cases, traceability matrix
   (every BRD requirement mapped to at least one scenario).
 
-### Process artifact
+### Process artifact (written on ALL outcomes — SUCCESS and FAIL)
 - **File:** `{job_dir}/process/WriteBddTestArch.json`
-- **Body:** `{ "scenario_count": N, "brd_coverage": "complete", "edge_cases": N, "fixture_tables": ["customers", "accounts"] }`
+- **Body:** `{ "outcome": "SUCCESS|FAIL", "reason": "...", "conditions": [], "scenario_count": N, "brd_coverage": "complete", "edge_cases": N, "fixture_tables": ["customers", "accounts"] }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file even on FAIL.
 
 ## Method
 

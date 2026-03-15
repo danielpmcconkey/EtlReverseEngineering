@@ -42,9 +42,12 @@ incorporating the reviewer's feedback.
   transformation rules (numbered), output formats and schemas (numbered),
   anti-patterns catalog, assumptions, requirement index.
 
-### Process artifact
+### Process artifact (written on ALL outcomes — SUCCESS and FAIL)
 - **File:** `{job_dir}/process/WriteBrd.json`
-- **Body:** `{ "requirement_count": N, "anti_pattern_count": N, "output_formats": ["csv"], "key_transformations": ["JOIN + aggregate"] }`
+- **Body:** `{ "outcome": "SUCCESS|FAIL", "reason": "...", "conditions": [], "requirement_count": N, "anti_pattern_count": N, "output_formats": ["csv"], "key_transformations": ["JOIN + aggregate"] }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST write this file even on FAIL.
 
 ## Method
 

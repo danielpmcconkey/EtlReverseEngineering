@@ -202,11 +202,14 @@ Count every finding. Classify each as:
 
 ## Writes
 
-### Process artifact (written on ALL outcomes — findings must persist for human triage)
+### Process artifact (written on ALL outcomes — the orchestrator reads `outcome` from this file for routing)
 - **File:** `{job_dir}/process/FBR_EvidenceAudit.json`
 - **Body:**
 ```json
 {
+  "outcome": "APPROVED|REJECTED",
+  "reason": "...",
+  "conditions": [],
   "auditor": "Pat",
   "brd_requirements_total": 0,
   "brd_requirements_traced_to_og": 0,

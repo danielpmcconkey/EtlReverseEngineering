@@ -28,9 +28,12 @@ have mistranslated requirements into wrong technical spec.
 
 ## Writes
 
-### Process artifact
+### Process artifact (written on ALL outcomes)
 - **File:** `{job_dir}/process/Triage_CheckFsd.json`
-- **Body:** `{ "verdict": "clean|fault", "fault_reason": "...", "faulty_specs": ["FSD-003"], "confidence": "high|medium|low" }`
+- **Body:** `{ "outcome": "SUCCESS", "reason": "FSD check complete — verdict: clean|fault", "conditions": [], "verdict": "clean|fault", "fault_reason": "...", "faulty_specs": ["FSD-003"], "confidence": "high|medium|low" }`
+
+**The orchestrator reads the `outcome` field from this file to determine
+routing.** You MUST always write this file.
 
 ## Method
 
