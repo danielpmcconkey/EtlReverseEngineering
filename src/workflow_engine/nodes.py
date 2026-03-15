@@ -223,6 +223,37 @@ _CODE_REVIEWER_SUB_AGENT: dict[str, dict[str, str]] = {
 }
 
 
+# Per-node model assignments. Nodes not listed here fall back to the CLI default.
+# Rationale documented in AtcStrategy/POC6/BDsNotes/per-node-model-map.md
+MODEL_MAP: dict[str, str] = {
+    # Define — spec work, adversarial review
+    "WriteBrd":                  "opus",
+    "ReviewBrd":                 "opus",
+    "WriteBrdResponse":          "opus",
+    # Design — spec work, cascading impact
+    "WriteBddTestArch":          "opus",
+    "ReviewBdd":                 "opus",
+    "WriteBddResponse":          "opus",
+    "WriteFsd":                  "opus",
+    "ReviewFsd":                 "opus",
+    "WriteFsdResponse":          "opus",
+    # Build — code-vs-spec judgment
+    "ReviewJobArtifacts":        "opus",
+    # FBR gates — drift detection
+    "FBR_BrdCheck":              "opus",
+    "FBR_FsdCheck":              "opus",
+    "FBR_ArtifactCheck":         "opus",
+    # Validate — judgment, Pat
+    "FinalSignOff":              "opus",
+    "FBR_EvidenceAudit":         "opus",
+    # Triage — OG code tracing
+    "Triage_AnalyzeOgFlow":      "opus",
+    # Mechanical — file copy, queue+poll
+    "Publish":                   "haiku",
+    "ExecuteProofmark":          "haiku",
+}
+
+
 def create_agent_registry(
     blueprints_dir: Path,
     jobs_dir: Path,
@@ -256,7 +287,7 @@ def create_agent_registry(
             node_name=node_name,
             blueprint_path=bp_path,
             jobs_dir=jobs_dir,
-            model=model,
+            model=MODEL_MAP.get(node_name, model),
             sub_agents=sub_agents,
             etl_start_date=etl_start_date,
             etl_end_date=etl_end_date,
