@@ -42,7 +42,11 @@ and logically.
 3. Verify Transformation SQL is valid SQLite.
 4. If external modules exist: verify they follow `execute(shared_state)`
    interface, logic matches FSD pseudo-code, pandas usage is correct.
-5. Cross-reference build process artifact's FSD compliance claim.
+5. If external modules exist: verify the FSD justifies why standard framework
+   modules (DataSourcing, Transformation, CsvFileWriter) could not achieve the
+   same result. External modules are a last resort — flag any external module
+   whose functionality could be accomplished with standard modules.
+6. Cross-reference build process artifact's FSD compliance claim.
 
 ## stdout contract
 

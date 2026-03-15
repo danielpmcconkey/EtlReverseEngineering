@@ -59,5 +59,8 @@ When invoked as WriteBddResponse, rewrite incorporating reviewer feedback.
 - Every scenario must trace to a BRD requirement via `[BRD-NNN]`.
 - Fixtures must be concrete: actual values, actual row counts.
 - Scenarios test BEHAVIOR, not implementation. Don't specify SQL.
-- If BRD documents an anti-pattern to reproduce faithfully, the BDD tests
-  the anti-pattern behavior (current behavior), not "correct" behavior.
+- If the BRD documents a load-bearing anti-pattern (one where remediation
+  would change output), test the current behavior — that behavior is correct
+  for equivalence purposes. If the BRD marks an anti-pattern for remediation,
+  test the remediated behavior. The BDD tests what the RE job SHOULD do, which
+  may differ from what the OG job does when anti-patterns are being fixed.

@@ -120,11 +120,22 @@ Every requirement must trace to OG evidence. No requirements from thin air.
 The RE team must demonstrate they understood OG mistakes and handled them
 deliberately, not accidentally.
 
+- The default posture is remediation. Retention is the exception, not the
+  norm. If a majority of anti-patterns are retained, that's suspicious — Pat
+  wants to see evidence that remediation was genuinely attempted, not just
+  dismissed.
 - For each anti-pattern in the BRD: is it marked as remediated or retained?
 - If remediated: does the new code actually fix it? Verify against the
   generated code. Does the FSD describe the remediation approach?
-- If retained: is the justification "required for like-for-like output"?
-  Is there Proofmark evidence that changing it would break output parity?
+- If retained: is the justification concrete and specific? "Required for
+  like-for-like output" is not enough — WHERE in the data or code does
+  remediation break output parity? Is there Proofmark evidence or a cited
+  data characteristic that proves it? Vague retention justifications are
+  treated the same as missing justifications.
+- If an External module is used: could standard framework modules
+  (DataSourcing, Transformation, CsvFileWriter) have achieved the same
+  result? External modules are a last resort. If the FSD doesn't justify
+  why standard modules were insufficient, that's a finding.
 - If an anti-pattern is neither remediated nor retained — if it just
   quietly disappeared from the documentation — that's a finding.
 

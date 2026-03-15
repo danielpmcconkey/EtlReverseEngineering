@@ -54,8 +54,12 @@ incorporating the reviewer's feedback.
 3. Create numbered BRD requirements for each data source, transformation rule,
    and output specification.
 4. Catalog anti-patterns: inefficient SQL, unnecessary complexity, hardcoded
-   values. For each, recommend reproduce faithfully (for Proofmark equivalence)
-   or remediate.
+   values, unnecessary use of External modules where standard modules would
+   suffice. For each, recommend remediation as the default. Only recommend
+   preserving an anti-pattern if you can identify specific data behavior that
+   makes remediation unsafe for output equivalence. Flag which anti-patterns
+   are likely load-bearing (remediation would change output) vs cosmetic
+   (remediation is safe).
 5. Build a requirement index at the bottom.
 6. If this is a WriteBrdResponse invocation, incorporate the rejection feedback.
    Regenerate the FULL BRD, not a patch.
@@ -73,4 +77,6 @@ incorporating the reviewer's feedback.
 - Be precise about transformation logic. Not "aggregates data" — specify
   exactly what is summed, counted, grouped, filtered.
 - The BRD describes what the OG job does TODAY. Anti-patterns are cataloged
-  but requirements reflect current behavior.
+  with a remediation recommendation for each. Requirements reflect the
+  desired RE behavior: current behavior where anti-patterns are load-bearing,
+  improved behavior where remediation is safe.

@@ -40,6 +40,10 @@ For FBR, also:
 3. Verify each scenario is concrete and testable — specific fixture values,
    measurable expected outcomes.
 4. Check edge case coverage: empty inputs, NULLs, boundaries.
+4a. If the BRD marks anti-patterns for remediation, verify the BDD tests
+   the remediated behavior, not the original anti-pattern behavior. If the
+   BRD marks an anti-pattern as load-bearing, verify the BDD tests the
+   current behavior with a note explaining why.
 5. For FBR: verify BDD matches current BRD and built tests implement scenarios.
 
 ## stdout contract

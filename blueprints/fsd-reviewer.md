@@ -43,7 +43,11 @@ For FBR, also:
 2. Verify implementation viability: valid SQLite SQL, correct module configs,
    implementable pseudo-code.
 3. Verify job conf JSON is structurally valid.
-4. Check anti-pattern decisions are justified.
+4. Check anti-pattern decisions are justified. The default posture is
+   remediation — if the FSD preserves an anti-pattern, verify it documents
+   why remediation would change output (load-bearing). If the FSD uses an
+   External module, verify it explains why standard modules can't produce
+   equivalent output. Challenge any preservation that lacks concrete evidence.
 5. For FBR: compare built artifacts against FSD, flag drift.
 
 ## stdout contract

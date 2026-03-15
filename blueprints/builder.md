@@ -82,4 +82,7 @@ feedback.
   time — no file path in the conf. Write the `.py` file to `{job_dir}/artifacts/code/`.
   The publisher handles deployment to `RE/externals/`.
 - The publisher handles all deployment — no cross-repo writes from the builder.
-- If the FSD says reproduce an anti-pattern, do it.
+- If the FSD specifies preserving a load-bearing anti-pattern (one where
+  remediation would change output), implement it as specified. The FSD's
+  anti-pattern decisions have already been reviewed — the builder's job is
+  faithful implementation of the spec, not second-guessing remediation choices.

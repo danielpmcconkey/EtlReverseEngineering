@@ -2,7 +2,7 @@
 
 **Stage:** Validate
 **States:** FinalSignOff
-**Outcome type:** SUCCESS / FAIL
+**Outcome type:** APPROVED / FAIL
 
 ## Role
 
@@ -51,14 +51,16 @@ Last stop before the job is declared done.
 2. Review each non-strict Proofmark column — confirm justification is valid.
 3. For each fuzzy column: read actual OG and RE output files for 3 sample
    dates. Compare values manually. Verify differences are precision-related.
-4. Review BRD anti-patterns — each handled as specified.
+4. Review BRD anti-patterns — verify each was either remediated or retained
+   with concrete justification. Remediation is the expected default; retention
+   requires evidence that remediation would change output.
 5. Check artifact trail: every required artifact exists, every review APPROVED.
 6. Write sign-off.
 
 ## stdout contract
 
 ```json
-{"outcome": "SUCCESS", "reason": "All checks pass — job signed off as COMPLETE", "conditions": []}
+{"outcome": "APPROVED", "reason": "All checks pass — job signed off as COMPLETE", "conditions": []}
 ```
 or
 ```json

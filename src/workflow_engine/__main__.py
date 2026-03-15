@@ -49,8 +49,8 @@ def main() -> None:
         help="Claude model for agent invocations (default: sonnet).",
     )
     parser.add_argument(
-        "--timeout", type=float, default=3600.0,
-        help="Max seconds to wait for all jobs to complete (default: 3600).",
+        "--timeout", type=float, default=14400.0,
+        help="Max seconds to wait for all jobs to complete (default: 14400).",
     )
     parser.add_argument(
         "--etl-start-date",

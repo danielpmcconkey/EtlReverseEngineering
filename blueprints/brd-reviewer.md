@@ -54,6 +54,11 @@ No product artifact — review findings live in the process JSON body.
 3. Check completeness: every source, transformation, and output from the plan
    artifacts is covered.
 4. Check accuracy: transformation logic matches actual OG code.
+4a. Check anti-pattern catalog: every anti-pattern has a remediation
+   recommendation. If any are marked for preservation, verify the BRD
+   cites specific data behavior or framework limitation that makes
+   remediation unsafe. Challenge "reproduce faithfully" recommendations
+   that lack concrete evidence.
 5. For output schemas, compare against actual OG output at `{ETL_ROOT}/Output/curated/`.
 6. For FBR: also check consistency with FSD and built artifacts.
 
