@@ -141,7 +141,8 @@ class TestAgentNodeExecute:
         data = json.loads(process_file.read_text())
         assert data["outcome"] == "SUCCESS"
 
-    def test_fail_outcome_no_process_artifact(self, agent_node: AgentNode) -> None:
+    def test_fail_outcome_writes_process_artifact(self, agent_node: AgentNode) -> None:
+        """Session 21: process artifacts written on ALL outcomes including FAIL."""
         job = JobState(job_id="job-002")
         mock_result = _make_cli_response("FAIL", "could not locate files")
 
@@ -153,9 +154,10 @@ class TestAgentNodeExecute:
             outcome = agent_node.execute(job)
 
         assert outcome == Outcome.FAILURE
-        # No process artifact on failure
         process_file = agent_node.jobs_dir / "job-002" / "process" / "LocateOgSourceFiles.json"
-        assert not process_file.exists()
+        assert process_file.exists()
+        data = json.loads(process_file.read_text())
+        assert data["outcome"] == "FAIL"
 
     def test_approved_outcome(self, agent_node: AgentNode) -> None:
         job = JobState(job_id="job-003")

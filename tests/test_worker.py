@@ -1,10 +1,11 @@
 """Tests for the worker pool."""
 
-import os
 import threading
 import time
 
 import pytest
+
+from tests.conftest import make_test_job_id
 
 from workflow_engine.db import (
     complete_task,
@@ -43,32 +44,34 @@ class TestWorkerExecution:
         """Workers claim and process enqueued tasks."""
         processed = []
         lock = threading.Lock()
+        jids = [make_test_job_id(f"wp{i}") for i in range(5)]
 
         def handler(task):
             with lock:
                 processed.append(task["job_id"])
             complete_task(task["id"])
 
-        for i in range(5):
-            enqueue_task(f"job-{i}", "NodeA")
+        for jid in jids:
+            enqueue_task(jid, "NodeA")
 
         wp = WorkerPool(handler=handler, n_workers=2, poll_interval=0.05)
         wp.run_until_drained(timeout=5.0)
 
-        assert sorted(processed) == [f"job-{i}" for i in range(5)]
+        assert sorted(processed) == sorted(jids)
 
     def test_no_double_processing(self):
         """Each task is processed by exactly one worker."""
         seen = []
         lock = threading.Lock()
+        jids = [make_test_job_id(f"nd{i}") for i in range(10)]
 
         def handler(task):
             with lock:
                 seen.append((task["id"], threading.current_thread().name))
             complete_task(task["id"])
 
-        for i in range(10):
-            enqueue_task(f"job-{i}", "NodeA")
+        for jid in jids:
+            enqueue_task(jid, "NodeA")
 
         wp = WorkerPool(handler=handler, n_workers=4, poll_interval=0.05)
         wp.run_until_drained(timeout=5.0)
@@ -81,6 +84,7 @@ class TestWorkerExecution:
         """Multiple workers actually run concurrently."""
         active_threads = set()
         lock = threading.Lock()
+        jids = [make_test_job_id(f"mw{i}") for i in range(8)]
 
         def handler(task):
             with lock:
@@ -88,8 +92,8 @@ class TestWorkerExecution:
             time.sleep(0.05)  # hold the task briefly
             complete_task(task["id"])
 
-        for i in range(8):
-            enqueue_task(f"job-{i}", "NodeA")
+        for jid in jids:
+            enqueue_task(jid, "NodeA")
 
         wp = WorkerPool(handler=handler, n_workers=4, poll_interval=0.02)
         wp.run_until_drained(timeout=5.0)
@@ -101,6 +105,7 @@ class TestWorkerExecution:
         """Workers are fungible — multiple workers process different jobs."""
         worker_jobs = {}
         lock = threading.Lock()
+        jids = [make_test_job_id(f"aw{i}") for i in range(12)]
 
         def handler(task):
             thread_name = threading.current_thread().name
@@ -108,8 +113,8 @@ class TestWorkerExecution:
                 worker_jobs.setdefault(thread_name, []).append(task["job_id"])
             complete_task(task["id"])
 
-        for i in range(12):
-            enqueue_task(f"job-{i}", "NodeA")
+        for jid in jids:
+            enqueue_task(jid, "NodeA")
 
         wp = WorkerPool(handler=handler, n_workers=3, poll_interval=0.02)
         wp.run_until_drained(timeout=5.0)
@@ -125,6 +130,8 @@ class TestWorkerExecution:
         processed = []
         lock = threading.Lock()
         call_count = {"n": 0}
+        jid_err = make_test_job_id("err")
+        jid_ok = make_test_job_id("ok")
 
         def handler(task):
             with lock:
@@ -135,13 +142,13 @@ class TestWorkerExecution:
             complete_task(task["id"])
 
         # First task will error, second should still get processed
-        enqueue_task("job-err", "NodeA")
-        enqueue_task("job-ok", "NodeB")
+        enqueue_task(jid_err, "NodeA")
+        enqueue_task(jid_ok, "NodeB")
 
         wp = WorkerPool(handler=handler, n_workers=1, poll_interval=0.05)
         wp.run_until_drained(timeout=5.0)
 
-        assert "job-ok" in processed
+        assert jid_ok in processed
 
     def test_stop_signals_workers(self):
         """stop() causes workers to exit their loop."""
@@ -159,13 +166,14 @@ class TestClutchIntegration:
         """When clutch is engaged, workers sleep instead of claiming tasks."""
         processed = []
         lock = threading.Lock()
+        jid = make_test_job_id("clutch")
 
         def handler(task):
             with lock:
                 processed.append(task["job_id"])
             complete_task(task["id"])
 
-        enqueue_task("job-clutched", "NodeA")
+        enqueue_task(jid, "NodeA")
 
         # Engage the clutch
         pool = get_pool()
@@ -194,4 +202,4 @@ class TestClutchIntegration:
         wp.stop(timeout=2.0)
 
         with lock:
-            assert processed == ["job-clutched"]
+            assert processed == [jid]

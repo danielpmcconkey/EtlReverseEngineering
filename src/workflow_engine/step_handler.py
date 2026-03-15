@@ -7,6 +7,7 @@ next node → save state → enqueue next (or mark terminal).
 
 from __future__ import annotations
 
+import json
 import random
 from pathlib import Path
 from typing import Any
@@ -75,6 +76,20 @@ class StepHandler:
         raw_outcome = node.execute(job)
         outcome = self._resolve_outcome(job, node_name, raw_outcome)
 
+        # Hydrate triage_results from process artifact for triage check nodes.
+        # AgentNode writes verdict to disk but doesn't touch job.triage_results;
+        # the TriageRouterNode (T7) reads from job.triage_results to route.
+        if node_name.startswith("Triage_Check") and self._config.use_agents:
+            process_file = (
+                Path(self._config.jobs_dir) / job_id / "process" / f"{node_name}.json"
+            )
+            if process_file.exists():
+                try:
+                    artifact = json.loads(process_file.read_text())
+                    job.triage_results[node_name] = artifact.get("verdict", "clean")
+                except (json.JSONDecodeError, OSError):
+                    job.triage_results[node_name] = "clean"
+
         # Handle terminal: DEAD_LETTER
         if job.status == "DEAD_LETTER":
             log.info(
@@ -136,15 +151,6 @@ class StepHandler:
             )
         next_node = TRANSITION_TABLE[key]
 
-        # FBR intercept: review APPROVE while fbr_return_pending
-        if (
-            outcome == Outcome.APPROVE
-            and job.fbr_return_pending
-            and node_name in REVIEW_ROUTING
-        ):
-            next_node = "FBR_BrdCheck"
-            job.fbr_return_pending = False
-
         log.info(
             "transition",
             node=node_name,
@@ -161,8 +167,6 @@ class StepHandler:
             complete_task(task_id)
         else:
             job.current_node = next_node
-            if next_node == "FBR_BrdCheck":
-                job.fbr_return_pending = False
             save_job_state(job)
             complete_task(task_id)
             enqueue_task(job_id, next_node)

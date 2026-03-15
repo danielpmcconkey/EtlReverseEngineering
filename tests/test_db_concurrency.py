@@ -7,6 +7,8 @@ import psycopg
 import psycopg.errors
 import pytest
 
+from tests.conftest import make_test_job_id
+
 from workflow_engine.db import (
     complete_task,
     enqueue_task,
@@ -31,7 +33,8 @@ _CLAIM_SQL = (
 class TestSkipLocked:
     def test_double_claim_one_task(self):
         """Two connections claim the same single task — one wins, one gets None."""
-        enqueue_task("job-A", "NodeA")
+        jid = make_test_job_id("skiplk")
+        enqueue_task(jid, "NodeA")
 
         conn1 = psycopg.connect(_CONNINFO, autocommit=False)
         conn2 = psycopg.connect(_CONNINFO, autocommit=False)
@@ -49,9 +52,9 @@ class TestSkipLocked:
 
     def test_two_claimers_get_different_tasks(self):
         """Three tasks enqueued, two concurrent claimers each get a different one."""
-        enqueue_task("job-1", "NodeA")
-        enqueue_task("job-2", "NodeB")
-        enqueue_task("job-3", "NodeC")
+        jids = [make_test_job_id(f"sk{i}") for i in range(3)]
+        for jid in jids:
+            enqueue_task(jid, "NodeA")
 
         conn1 = psycopg.connect(_CONNINFO, autocommit=False)
         conn2 = psycopg.connect(_CONNINFO, autocommit=False)
@@ -76,14 +79,15 @@ class TestSkipLocked:
 class TestOneActivePerJob:
     def test_pending_blocks_second_enqueue(self):
         """Can't enqueue for a job that already has a pending task."""
-        enqueue_task("job-X", "NodeA")
+        jid = make_test_job_id("pend")
+        enqueue_task(jid, "NodeA")
         with pytest.raises(psycopg.errors.UniqueViolation):
-            enqueue_task("job-X", "NodeB")
+            enqueue_task(jid, "NodeB")
 
     def test_claimed_blocks_second_enqueue(self):
         """Can't enqueue for a job that has a claimed (in-progress) task."""
-        enqueue_task("job-Y", "NodeA")
-        # Claim it via raw SQL to set status='claimed'
+        jid = make_test_job_id("claim")
+        enqueue_task(jid, "NodeA")
         pool = get_pool()
         with pool.connection() as conn:
             row = conn.execute(_CLAIM_SQL).fetchone()
@@ -95,12 +99,12 @@ class TestOneActivePerJob:
                 (row[0],),
             )
         with pytest.raises(psycopg.errors.UniqueViolation):
-            enqueue_task("job-Y", "NodeB")
+            enqueue_task(jid, "NodeB")
 
     def test_completed_allows_new_enqueue(self):
         """After a task is completed, a new one for the same job is allowed."""
-        task_id = enqueue_task("job-Z", "NodeA")
-        # Claim and complete
+        jid = make_test_job_id("compl")
+        task_id = enqueue_task(jid, "NodeA")
         pool = get_pool()
         with pool.connection() as conn:
             conn.execute(
@@ -110,6 +114,5 @@ class TestOneActivePerJob:
                 (task_id,),
             )
         complete_task(task_id)
-        # Should not raise
-        new_id = enqueue_task("job-Z", "NodeB")
+        new_id = enqueue_task(jid, "NodeB")
         assert new_id > task_id

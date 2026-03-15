@@ -137,7 +137,7 @@ class AgentNode(Node):
                 stderr=result.stderr[:500] if result.stderr else "",
             )
             # Agent crashed — still check if it wrote a process artifact before dying.
-            return self._read_outcome_from_file(job)
+            return self._read_outcome_from_file(job) or Outcome.FAILURE
 
         # Primary path: read outcome from the process artifact file the agent wrote.
         outcome = self._read_outcome_from_file(job)

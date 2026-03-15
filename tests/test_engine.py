@@ -14,6 +14,8 @@ from pathlib import Path
 import structlog
 import pytest
 
+from tests.conftest import make_test_job_id
+
 from workflow_engine.db import (
     claim_task,
     enqueue_task,
@@ -24,7 +26,6 @@ from workflow_engine.models import EngineConfig, JobState, Outcome
 from workflow_engine.nodes import Node
 from workflow_engine.step_handler import StepHandler
 from workflow_engine.transitions import (
-    FBR_ROUTING,
     HAPPY_PATH,
     REVIEW_ROUTING,
     TRANSITION_TABLE,
@@ -88,13 +89,14 @@ def _run_job_via_queue(handler: StepHandler, job_id: str, start_node: str = None
 
 
 class TestHappyPathTraversal:
-    """Verify a single job traverses all 28 nodes to COMPLETE via queue."""
+    """Verify a single job traverses all nodes to COMPLETE via queue."""
 
     def test_happy_path_traversal(self) -> None:
         _capture_logs()
         config = EngineConfig(n_jobs=1, seed=None)
         handler = StepHandler(config)
-        result = _run_job_via_queue(handler, "hp-test-001")
+        jid = make_test_job_id("hp")
+        result = _run_job_via_queue(handler, jid)
 
         assert result is not None
         assert result.status == "COMPLETE"
@@ -104,7 +106,8 @@ class TestHappyPathTraversal:
         cap = _capture_logs()
         config = EngineConfig(n_jobs=1, seed=None)
         handler = StepHandler(config)
-        _run_job_via_queue(handler, "log-test-001")
+        jid = make_test_job_id("log")
+        _run_job_via_queue(handler, jid)
 
         transitions = [e for e in cap if e.get("event") == "transition"]
         required_keys = {"event", "job_id", "node", "outcome", "next_node",
@@ -115,14 +118,17 @@ class TestHappyPathTraversal:
             assert not missing, f"Missing keys {missing} in transition log: {t}"
 
     def test_log_completeness(self) -> None:
-        """A happy-path job produces exactly 28 transition log entries."""
+        """A happy-path job produces exactly len(HAPPY_PATH) transition log entries."""
         cap = _capture_logs()
         config = EngineConfig(n_jobs=1, seed=None)
         handler = StepHandler(config)
-        _run_job_via_queue(handler, "complete-log-001")
+        jid = make_test_job_id("complog")
+        _run_job_via_queue(handler, jid)
 
         transitions = [e for e in cap if e.get("event") == "transition"]
-        assert len(transitions) == 28, f"Expected 28, got {len(transitions)}"
+        assert len(transitions) == len(HAPPY_PATH), (
+            f"Expected {len(HAPPY_PATH)}, got {len(transitions)}"
+        )
 
         logged_nodes = [t["node"] for t in transitions]
         assert logged_nodes == HAPPY_PATH
@@ -136,8 +142,8 @@ class TestNoStateBleed:
         config = EngineConfig(n_jobs=1, seed=None)
         handler = StepHandler(config)
 
-        r1 = _run_job_via_queue(handler, "bleed-001")
-        r2 = _run_job_via_queue(handler, "bleed-002")
+        r1 = _run_job_via_queue(handler, make_test_job_id("bleed1"))
+        r2 = _run_job_via_queue(handler, make_test_job_id("bleed2"))
 
         for result in [r1, r2]:
             assert result is not None
@@ -148,10 +154,10 @@ class TestNoStateBleed:
 class TestErrorHandling:
     """Verify error conditions."""
 
-    def test_missing_transition_raises(self) -> None:
-        """If (node, outcome) is missing from TRANSITION_TABLE, raise ValueError."""
+    def test_failure_promotes_to_fail_and_self_retries(self) -> None:
+        """FAILURE at a work node promotes to FAIL and self-retries until dead-letter."""
         _capture_logs()
-        config = EngineConfig(n_jobs=1, seed=None)
+        config = EngineConfig(n_jobs=1, max_main_retries=2, seed=None)
         handler = StepHandler(config)
 
         class BadNode:
@@ -159,13 +165,11 @@ class TestErrorHandling:
                 return Outcome.FAILURE
 
         handler._registry["LocateOgSourceFiles"] = BadNode()
-        state = JobState(job_id="error-test-001")
-        save_job_state(state)
-        enqueue_task("error-test-001", "LocateOgSourceFiles")
+        jid = make_test_job_id("badnode")
+        result = _run_job_via_queue(handler, jid)
 
-        task = claim_task()
-        with pytest.raises(ValueError, match="No transition"):
-            handler(task)
+        assert result.status == "DEAD_LETTER"
+        assert result.main_retry_count >= 2
 
 
 class TestCounterMechanics:
@@ -183,7 +187,7 @@ class TestCounterMechanics:
         handler._registry["ReviewBrd"] = ScriptedNode(
             [Outcome.FAIL], default=Outcome.APPROVE
         )
-        result = _run_job_via_queue(handler, "sm04-test")
+        result = _run_job_via_queue(handler, make_test_job_id("sm04"))
 
         assert result is not None
         assert result.main_retry_count == 1
@@ -194,7 +198,7 @@ class TestCounterMechanics:
         _capture_logs()
         handler = self._make_handler(max_main_retries=2)
         handler._registry["ReviewBrd"] = ScriptedNode([], default=Outcome.FAIL)
-        result = _run_job_via_queue(handler, "sm05-test")
+        result = _run_job_via_queue(handler, make_test_job_id("sm05"))
 
         assert result is not None
         assert result.status == "DEAD_LETTER"
@@ -207,7 +211,7 @@ class TestCounterMechanics:
         handler._registry["ReviewBrd"] = ScriptedNode(
             [Outcome.CONDITIONAL, Outcome.APPROVE], default=Outcome.APPROVE
         )
-        result = _run_job_via_queue(handler, "sm06-test")
+        result = _run_job_via_queue(handler, make_test_job_id("sm06"))
 
         assert result is not None
         assert result.status == "COMPLETE"
@@ -220,7 +224,7 @@ class TestCounterMechanics:
             [Outcome.CONDITIONAL, Outcome.CONDITIONAL, Outcome.APPROVE],
             default=Outcome.APPROVE,
         )
-        result = _run_job_via_queue(handler, "sm07-test")
+        result = _run_job_via_queue(handler, make_test_job_id("sm07"))
 
         assert result is not None
         assert result.main_retry_count == 1
@@ -233,7 +237,7 @@ class TestCounterMechanics:
         handler._registry["ReviewBrd"] = ScriptedNode(
             [Outcome.CONDITIONAL, Outcome.APPROVE], default=Outcome.APPROVE
         )
-        result = _run_job_via_queue(handler, "sm08-test")
+        result = _run_job_via_queue(handler, make_test_job_id("sm08"))
 
         assert result is not None
         assert result.conditional_counts.get("ReviewBrd", 0) == 0
@@ -247,7 +251,7 @@ class TestCounterMechanics:
             [Outcome.CONDITIONAL, Outcome.FAIL, Outcome.APPROVE],
             default=Outcome.APPROVE,
         )
-        result = _run_job_via_queue(handler, "sm09-test")
+        result = _run_job_via_queue(handler, make_test_job_id("sm09"))
 
         assert result is not None
         assert result.conditional_counts.get("ReviewBrd", 0) == 0
@@ -270,7 +274,7 @@ class TestReviewBranching:
         handler._registry["ReviewBrd"] = ScriptedNode(
             [Outcome.CONDITIONAL, Outcome.APPROVE], default=Outcome.APPROVE
         )
-        _run_job_via_queue(handler, "rb02-test")
+        _run_job_via_queue(handler, make_test_job_id("rb02"))
 
         transitions = [e for e in cap if e.get("event") == "transition"]
         nodes_visited = [t["node"] for t in transitions]
@@ -286,7 +290,7 @@ class TestReviewBranching:
         handler._registry["ReviewBrd"] = ScriptedNode(
             [Outcome.FAIL, Outcome.APPROVE], default=Outcome.APPROVE
         )
-        _run_job_via_queue(handler, "rb03-test")
+        _run_job_via_queue(handler, make_test_job_id("rb03"))
 
         transitions = [e for e in cap if e.get("event") == "transition"]
         nodes_visited = [t["node"] for t in transitions]
@@ -305,81 +309,26 @@ class TestReviewBranching:
         handler._registry["ReviewBdd"] = ScriptedNode(
             [Outcome.CONDITIONAL, Outcome.APPROVE], default=Outcome.APPROVE
         )
-        result = _run_job_via_queue(handler, "rb04-test")
+        result = _run_job_via_queue(handler, make_test_job_id("rb04"))
 
         assert result is not None
         assert result.last_rejection_reason is not None
         assert "ReviewBdd" in result.last_rejection_reason
 
 
-class TestFBRGauntlet:
-    """FBR-02, FBR-03, FBR-04: FBR gauntlet engine logic tests."""
+class TestFBREvidenceAudit:
+    """FBR_EvidenceAudit is the terminal gate — it stays even after FBR removal."""
 
     def _make_handler(self, **kwargs) -> StepHandler:
         defaults = dict(n_jobs=1, max_main_retries=5, max_conditional_per_node=3, seed=None)
         defaults.update(kwargs)
         return StepHandler(EngineConfig(**defaults))
 
-    def test_fbr_conditional_restarts_gauntlet(self) -> None:
-        """FBR-02: FBR CONDITIONAL -> response -> review APPROVE -> restart at FBR_BrdCheck."""
-        cap = _capture_logs()
-        handler = self._make_handler()
-        handler._registry["FBR_BrdCheck"] = ScriptedNode(
-            [Outcome.CONDITIONAL], default=Outcome.APPROVE
-        )
-        result = _run_job_via_queue(handler, "fbr02-test")
-
-        transitions = [e for e in cap if e.get("event") == "transition"]
-        nodes_visited = [t["node"] for t in transitions]
-
-        idx = nodes_visited.index("FBR_BrdCheck")
-        assert transitions[idx]["outcome"] == "CONDITIONAL"
-        assert nodes_visited[idx + 1] == "WriteBrdResponse"
-        assert nodes_visited[idx + 2] == "ReviewBrd"
-        assert nodes_visited[idx + 3] == "FBR_BrdCheck"
-        assert result.status == "COMPLETE"
-
-    def test_fbr_fail_rewinds_to_write_node(self) -> None:
-        """FBR-03: FBR FAIL rewinds to original write node."""
-        cap = _capture_logs()
-        handler = self._make_handler()
-        handler._registry["FBR_FsdCheck"] = ScriptedNode(
-            [Outcome.FAIL], default=Outcome.APPROVE
-        )
-        result = _run_job_via_queue(handler, "fbr03-test")
-
-        transitions = [e for e in cap if e.get("event") == "transition"]
-        nodes_visited = [t["node"] for t in transitions]
-
-        idx = nodes_visited.index("FBR_FsdCheck")
-        assert transitions[idx]["outcome"] == "FAIL"
-        assert nodes_visited[idx + 1] == "WriteFsd"
-        assert result.status == "COMPLETE"
-        assert result.main_retry_count == 1
-
-    def test_fbr_return_pending_flag(self) -> None:
-        """FBR-04: fbr_return_pending is cleared after routing to FBR_BrdCheck."""
-        cap = _capture_logs()
-        handler = self._make_handler()
-        handler._registry["FBR_ArtifactCheck"] = ScriptedNode(
-            [Outcome.CONDITIONAL], default=Outcome.APPROVE
-        )
-        result = _run_job_via_queue(handler, "fbr04-test")
-
-        transitions = [e for e in cap if e.get("event") == "transition"]
-        nodes_visited = [t["node"] for t in transitions]
-
-        response_idx = nodes_visited.index("BuildJobArtifactsResponse")
-        assert nodes_visited[response_idx + 1] == "ReviewJobArtifacts"
-        assert nodes_visited[response_idx + 2] == "FBR_BrdCheck"
-        assert result.fbr_return_pending is False
-        assert result.status == "COMPLETE"
-
     def test_fbr_evidence_audit_approved(self) -> None:
         """FBR_EvidenceAudit APPROVED → COMPLETE (final node in happy path)."""
         cap = _capture_logs()
         handler = self._make_handler()
-        result = _run_job_via_queue(handler, "evidence-pass")
+        result = _run_job_via_queue(handler, make_test_job_id("evpass"))
 
         transitions = [e for e in cap if e.get("event") == "transition"]
         nodes_visited = [t["node"] for t in transitions]
@@ -395,30 +344,11 @@ class TestFBRGauntlet:
         handler._registry["FBR_EvidenceAudit"] = ScriptedNode(
             [Outcome.FAIL], default=Outcome.APPROVE
         )
-        result = _run_job_via_queue(handler, "evidence-fail")
+        result = _run_job_via_queue(handler, make_test_job_id("evfail"))
 
         assert result.status == "DEAD_LETTER"
         assert result.current_node == "FBR_EvidenceAudit"
         assert result.main_retry_count == 1
-
-    def test_fbr_conditional_auto_promotes_to_fail(self) -> None:
-        """FBR gate: M consecutive CONDITIONALs auto-promotes to FAIL."""
-        cap = _capture_logs()
-        handler = self._make_handler(max_conditional_per_node=2)
-        handler._registry["FBR_BrdCheck"] = ScriptedNode(
-            [Outcome.CONDITIONAL, Outcome.CONDITIONAL], default=Outcome.APPROVE
-        )
-        result = _run_job_via_queue(handler, "fbr-auto-promote-test")
-
-        transitions = [e for e in cap if e.get("event") == "transition"]
-        nodes_visited = [t["node"] for t in transitions]
-
-        fbr_indices = [i for i, n in enumerate(nodes_visited) if n == "FBR_BrdCheck"]
-        last_fbr_fail_idx = fbr_indices[1]
-        assert transitions[last_fbr_fail_idx]["outcome"] == "FAIL"
-        assert nodes_visited[last_fbr_fail_idx + 1] == "WriteBrd"
-        assert result.main_retry_count == 1
-        assert result.status == "COMPLETE"
 
 
 class TestTriage:
@@ -433,8 +363,9 @@ class TestTriage:
         """TR-04/TR-05: Triage routes to earliest fault."""
         cap = _capture_logs()
         handler = self._make_handler()
+        jid = make_test_job_id("tr04")
         job = JobState(
-            job_id="tr04-test",
+            job_id=jid,
             current_node="Triage_Route",
             triage_results={
                 "Triage_CheckBrd": "fault",
@@ -442,12 +373,12 @@ class TestTriage:
             },
         )
         save_job_state(job)
-        enqueue_task("tr04-test", "Triage_Route")
+        enqueue_task(jid, "Triage_Route")
 
         task = claim_task()
         handler(task)
 
-        result = load_job_state("tr04-test")
+        result = load_job_state(jid)
         assert result.main_retry_count == 1
         transitions = [e for e in cap if e.get("event") == "transition"]
         assert transitions[0]["node"] == "Triage_Route"
@@ -458,8 +389,9 @@ class TestTriage:
         """TR-05: T4=fault, T6=fault -> routes to WriteFsd."""
         cap = _capture_logs()
         handler = self._make_handler()
+        jid = make_test_job_id("tr05")
         job = JobState(
-            job_id="tr05-test",
+            job_id=jid,
             current_node="Triage_Route",
             triage_results={
                 "Triage_CheckBrd": "clean",
@@ -469,7 +401,7 @@ class TestTriage:
             },
         )
         save_job_state(job)
-        enqueue_task("tr05-test", "Triage_Route")
+        enqueue_task(jid, "Triage_Route")
 
         task = claim_task()
         handler(task)
@@ -481,8 +413,9 @@ class TestTriage:
         """TR-06: No faults -> DEAD_LETTER."""
         _capture_logs()
         handler = self._make_handler()
+        jid = make_test_job_id("tr06")
         job = JobState(
-            job_id="tr06-test",
+            job_id=jid,
             current_node="Triage_Route",
             triage_results={
                 "Triage_CheckBrd": "clean",
@@ -492,12 +425,12 @@ class TestTriage:
             },
         )
         save_job_state(job)
-        enqueue_task("tr06-test", "Triage_Route")
+        enqueue_task(jid, "Triage_Route")
 
         task = claim_task()
         handler(task)
 
-        result = load_job_state("tr06-test")
+        result = load_job_state(jid)
         assert result.status == "DEAD_LETTER"
         assert result.main_retry_count == 1
 
@@ -505,13 +438,14 @@ class TestTriage:
         """TR-07: Triage routing increments main_retry_count."""
         _capture_logs()
         handler = self._make_handler()
+        jid = make_test_job_id("tr07")
         job = JobState(
-            job_id="tr07-test",
+            job_id=jid,
             current_node="Triage_Route",
             triage_results={"Triage_CheckBrd": "fault"},
         )
         save_job_state(job)
-        result = _run_job_via_queue(handler, "tr07-test", start_node="Triage_Route")
+        result = _run_job_via_queue(handler, jid, start_node="Triage_Route")
 
         assert result.main_retry_count == 1
         assert result.status == "COMPLETE"
@@ -520,19 +454,20 @@ class TestTriage:
         """Triage with main_retry at N-1 -> DEAD_LETTER."""
         _capture_logs()
         handler = self._make_handler(max_main_retries=2)
+        jid = make_test_job_id("trdl")
         job = JobState(
-            job_id="triage-dl-test",
+            job_id=jid,
             current_node="Triage_Route",
             main_retry_count=1,
             triage_results={"Triage_CheckFsd": "fault"},
         )
         save_job_state(job)
-        enqueue_task("triage-dl-test", "Triage_Route")
+        enqueue_task(jid, "Triage_Route")
 
         task = claim_task()
         handler(task)
 
-        result = load_job_state("triage-dl-test")
+        result = load_job_state(jid)
         assert result.status == "DEAD_LETTER"
         assert result.main_retry_count == 2
 
@@ -543,21 +478,22 @@ class TestTriage:
         handler._registry["ExecuteProofmark"] = ScriptedNode(
             [Outcome.FAILURE], default=Outcome.SUCCESS
         )
+        jid = make_test_job_id("trclear")
         job = JobState(
-            job_id="triage-clear-test",
+            job_id=jid,
             triage_results={"Triage_CheckBrd": "stale_fault"},
         )
         save_job_state(job)
-        result = _run_job_via_queue(handler, "triage-clear-test")
+        result = _run_job_via_queue(handler, jid)
 
         assert result.status == "DEAD_LETTER"
 
 
 class TestValidationRun:
-    """Smoke test: 200 jobs with RNG via queue, verify all major paths exercised."""
+    """Smoke test: jobs with RNG via queue, verify all major paths exercised."""
 
     def test_validation_run_exercises_major_paths(self) -> None:
-        """Smoke test: RNG jobs exercise conditionals, fails, and FBR restarts."""
+        """Smoke test: RNG jobs exercise conditionals, fails, and rewinds."""
         cap = _capture_logs()
         config = EngineConfig(
             n_jobs=10,
@@ -568,8 +504,8 @@ class TestValidationRun:
         handler = StepHandler(config)
 
         for i in range(config.n_jobs):
-            job_id = f"val-{i + 1:04d}"
-            _run_job_via_queue(handler, job_id)
+            jid = make_test_job_id(f"val{i}")
+            _run_job_via_queue(handler, jid)
 
         transitions = [e for e in cap if e.get("event") == "transition"]
 
@@ -579,20 +515,12 @@ class TestValidationRun:
         fails = [t for t in transitions if t["outcome"] == "FAIL"]
         assert len(fails) > 0, "No FAIL rewinds observed"
 
-        fbr_restarts = [
-            t for t in transitions
-            if t["outcome"] == "APPROVE"
-            and t["next_node"] == "FBR_BrdCheck"
-            and t["node"] in REVIEW_ROUTING
-        ]
-        assert len(fbr_restarts) > 0, "No FBR gauntlet restarts observed"
-
     def test_happy_path_completes_via_queue(self) -> None:
         """Deterministic happy path produces COMPLETE."""
         _capture_logs()
         config = EngineConfig(n_jobs=1, seed=None)
         handler = StepHandler(config)
-        result = _run_job_via_queue(handler, "complete-test")
+        result = _run_job_via_queue(handler, make_test_job_id("hpcomp"))
         assert result.status == "COMPLETE"
 
     def test_dead_letter_via_queue(self) -> None:
@@ -600,7 +528,7 @@ class TestValidationRun:
         _capture_logs()
         config = EngineConfig(n_jobs=1, max_main_retries=2, seed=42)
         handler = StepHandler(config)
-        result = _run_job_via_queue(handler, "dl-test")
+        result = _run_job_via_queue(handler, make_test_job_id("dltest"))
         assert result.status == "DEAD_LETTER"
 
 
@@ -612,17 +540,17 @@ class TestQueueExecution:
         _capture_logs()
         config = EngineConfig(n_jobs=5, seed=None)
         handler = StepHandler(config)
+        jids = [make_test_job_id(f"pool{i}") for i in range(5)]
 
-        for i in range(5):
-            job_id = f"pool-{i}"
-            save_job_state(JobState(job_id=job_id))
-            enqueue_task(job_id, HAPPY_PATH[0])
+        for jid in jids:
+            save_job_state(JobState(job_id=jid))
+            enqueue_task(jid, HAPPY_PATH[0])
 
         pool = WorkerPool(handler=handler, n_workers=3, poll_interval=0.02)
         pool.run_until_drained(timeout=10.0)
 
-        for i in range(5):
-            state = load_job_state(f"pool-{i}")
+        for jid in jids:
+            state = load_job_state(jid)
             assert state is not None
             assert state.status == "COMPLETE"
 
@@ -631,17 +559,18 @@ class TestQueueExecution:
         _capture_logs()
         config = EngineConfig(n_jobs=1, seed=None)
         handler = StepHandler(config)
+        jid = make_test_job_id("persist")
 
-        save_job_state(JobState(job_id="persist-test"))
-        enqueue_task("persist-test", HAPPY_PATH[0])
+        save_job_state(JobState(job_id=jid))
+        enqueue_task(jid, HAPPY_PATH[0])
 
         # Process just the first two steps manually
         task1 = claim_task()
         handler(task1)
-        state1 = load_job_state("persist-test")
+        state1 = load_job_state(jid)
         assert state1.current_node == HAPPY_PATH[1]
 
         task2 = claim_task()
         handler(task2)
-        state2 = load_job_state("persist-test")
+        state2 = load_job_state(jid)
         assert state2.current_node == HAPPY_PATH[2]

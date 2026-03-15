@@ -153,9 +153,9 @@ def test_response_nodes_rng_mode_returns_success_or_failure() -> None:
 
 
 def test_registry_total_size() -> None:
-    """Registry has 28 happy-path + 6 response + 7 triage = 41 nodes total."""
+    """Registry has 22 happy-path + 6 response + 7 triage = 35 nodes total."""
     registry = create_node_registry(rng=None)
-    assert len(registry) == 41, f"Expected 41 nodes, got {len(registry)}"
+    assert len(registry) == 35, f"Expected 35 nodes, got {len(registry)}"
 
 
 class TestTriageNodes:

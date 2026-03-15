@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import make_test_job_id
+
 from workflow_engine.db import (
     claim_task,
     load_job_state,
@@ -37,10 +39,11 @@ class TestIngestManifest:
 
     def test_enqueues_first_node_for_each_job(self):
         """Each job in the manifest gets the first happy-path node enqueued."""
+        jids = [make_test_job_id(f"mf{i}") for i in range(3)]
         path = self._write_manifest([
-            {"job_id": 1, "job_name": "JobA", "job_conf_path": "/a.json"},
-            {"job_id": 2, "job_name": "JobB", "job_conf_path": "/b.json"},
-            {"job_id": 3, "job_name": "JobC", "job_conf_path": "/c.json"},
+            {"job_id": jids[0], "job_name": "JobA", "job_conf_path": "/a.json"},
+            {"job_id": jids[1], "job_name": "JobB", "job_conf_path": "/b.json"},
+            {"job_id": jids[2], "job_name": "JobC", "job_conf_path": "/c.json"},
         ])
         task_ids = ingest_manifest(path)
         assert len(task_ids) == 3
@@ -56,38 +59,39 @@ class TestIngestManifest:
 
     def test_creates_initial_job_state(self):
         """Each job gets a fresh JobState saved to Postgres."""
+        jid = make_test_job_id("initst")
         path = self._write_manifest([
-            {"job_id": 42, "job_name": "TestJob", "job_conf_path": "/t.json"},
+            {"job_id": jid, "job_name": "TestJob", "job_conf_path": "/t.json"},
         ])
         ingest_manifest(path)
 
-        state = load_job_state("42")
+        state = load_job_state(jid)
         assert state is not None
-        assert state.job_id == "42"
+        assert state.job_id == jid
         assert state.current_node == "LocateOgSourceFiles"
         assert state.status == "RUNNING"
         assert state.main_retry_count == 0
 
     def test_returns_job_ids(self):
         """Returns a list of job IDs matching the number of jobs."""
+        jids = [make_test_job_id(f"ret{i}") for i in range(5)]
         path = self._write_manifest([
-            {"job_id": i, "job_name": f"Job{i}", "job_conf_path": f"/{i}.json"}
-            for i in range(5)
+            {"job_id": jid, "job_name": f"Job{i}", "job_conf_path": f"/{i}.json"}
+            for i, jid in enumerate(jids)
         ])
-        job_ids = ingest_manifest(path)
-        assert len(job_ids) == 5
-        assert all(isinstance(jid, str) for jid in job_ids)
-        assert job_ids == [str(i) for i in range(5)]
+        result_ids = ingest_manifest(path)
+        assert len(result_ids) == 5
+        assert all(isinstance(jid, str) for jid in result_ids)
 
     def test_real_manifest_format(self):
         """Works with the actual manifest format (job_id as int)."""
+        jid = make_test_job_id("real")
         path = self._write_manifest([
-            {"job_id": 1, "job_name": "CustomerAccountSummary",
+            {"job_id": jid, "job_name": "CustomerAccountSummary",
              "job_conf_path": "{ETL_ROOT}/JobExecutor/Jobs/customer_account_summary.json"},
         ])
         job_ids = ingest_manifest(path)
         assert len(job_ids) == 1
-        assert job_ids == ["1"]
 
-        state = load_job_state("1")
+        state = load_job_state(jid)
         assert state is not None

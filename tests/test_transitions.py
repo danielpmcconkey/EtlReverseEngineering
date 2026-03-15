@@ -16,12 +16,27 @@ class TestTransitionTable:
     def test_table_is_dict(self) -> None:
         assert isinstance(TRANSITION_TABLE, dict)
 
-    def test_happy_path_has_28_nodes(self) -> None:
-        assert len(HAPPY_PATH) == 28
+    def test_happy_path_has_22_nodes(self) -> None:
+        """22 nodes after FBR gates (19-24) removed in session 22."""
+        assert len(HAPPY_PATH) == 22
 
     def test_happy_path_order(self) -> None:
         assert HAPPY_PATH[0] == "LocateOgSourceFiles"
         assert HAPPY_PATH[-1] == "FBR_EvidenceAudit"
+
+    def test_publish_leads_to_execute_job_runs(self) -> None:
+        """After FBR removal, Publish -> ExecuteJobRuns directly."""
+        publish_idx = HAPPY_PATH.index("Publish")
+        assert HAPPY_PATH[publish_idx + 1] == "ExecuteJobRuns"
+
+    def test_no_fbr_gates_in_happy_path(self) -> None:
+        """FBR_BrdCheck through FBR_UnitTestCheck are gone."""
+        removed = {
+            "FBR_BrdCheck", "FBR_BddCheck", "FBR_FsdCheck",
+            "FBR_ArtifactCheck", "FBR_ProofmarkCheck", "FBR_UnitTestCheck",
+        }
+        for node in removed:
+            assert node not in HAPPY_PATH, f"{node} should be removed from HAPPY_PATH"
 
     def test_every_happy_path_node_has_outbound_edge(self) -> None:
         for node in HAPPY_PATH:
@@ -140,70 +155,30 @@ class TestReviewRouting:
                 f"{response_node} should be NodeType.WORK"
             )
 
-    def test_transition_table_total_edge_count(self) -> None:
-        """TRANSITION_TABLE has 28 happy-path edges + 18 review branching edges = 46 minimum.
-
-        28 happy-path (WORK SUCCESS + REVIEW APPROVE)
-        + 6 CONDITIONAL edges + 6 FAIL edges + 6 response SUCCESS edges = 46
-        Plus FBR branching + triage edges.
-        """
-        assert len(TRANSITION_TABLE) >= 46
-
     def test_validate_transition_table_still_passes(self) -> None:
         """validate_transition_table() must still return empty list (no regression)."""
         errors = validate_transition_table()
         assert errors == [], f"validate_transition_table() returned errors: {errors}"
 
 
-_EXPECTED_FBR_ROUTING = {
-    "FBR_BrdCheck":       ("WriteBrdResponse",          "WriteBrd"),
-    "FBR_BddCheck":       ("WriteBddResponse",          "WriteBddTestArch"),
-    "FBR_FsdCheck":       ("WriteFsdResponse",          "WriteFsd"),
-    "FBR_ArtifactCheck":  ("BuildJobArtifactsResponse", "BuildJobArtifacts"),
-    "FBR_ProofmarkCheck": ("BuildProofmarkResponse",    "BuildProofmarkConfig"),
-    "FBR_UnitTestCheck":  ("BuildUnitTestsResponse",    "BuildUnitTests"),
-}
+class TestFBRRemoved:
+    """FBR gates (19-24) removed in session 22. FBR_ROUTING is empty."""
 
+    def test_fbr_routing_is_empty(self) -> None:
+        assert len(FBR_ROUTING) == 0
 
-class TestFBRGauntlet:
-    """Tests for FBR_ROUTING dict and expanded TRANSITION_TABLE edges (FBR-01)."""
-
-    def test_fbr_routing_has_exactly_6_entries(self) -> None:
-        assert len(FBR_ROUTING) == 6
-
-    def test_fbr_routing_exact_mapping(self) -> None:
-        """FBR gates map to correct (response_node, rewind_target) pairs."""
-        for gate, expected in _EXPECTED_FBR_ROUTING.items():
-            assert FBR_ROUTING[gate] == expected, f"{gate} mapping incorrect"
-
-    def test_fbr_conditional_edges_in_transition_table(self) -> None:
-        """Each FBR gate has (gate, CONDITIONAL) -> response_node."""
-        for gate, (response_node, _) in _EXPECTED_FBR_ROUTING.items():
-            key = (gate, Outcome.CONDITIONAL)
-            assert key in TRANSITION_TABLE, f"Missing CONDITIONAL edge for {gate}"
-            assert TRANSITION_TABLE[key] == response_node
-
-    def test_fbr_fail_edges_in_transition_table(self) -> None:
-        """Each FBR gate has (gate, FAIL) -> rewind_target."""
-        for gate, (_, rewind_target) in _EXPECTED_FBR_ROUTING.items():
-            key = (gate, Outcome.FAIL)
-            assert key in TRANSITION_TABLE, f"Missing FAIL edge for {gate}"
-            assert TRANSITION_TABLE[key] == rewind_target
+    def test_fbr_evidence_audit_still_in_happy_path(self) -> None:
+        """FBR_EvidenceAudit (terminal gate) stays."""
+        assert "FBR_EvidenceAudit" in HAPPY_PATH
 
     def test_response_node_failure_edges_in_transition_table(self) -> None:
-        """Each response node in REVIEW_ROUTING has (response_node, FAILURE) -> rewind_target."""
+        """Response nodes still have FAILURE edges from REVIEW_ROUTING."""
         for review_node, (response_node, rewind_target) in REVIEW_ROUTING.items():
             key = (response_node, Outcome.FAILURE)
             assert key in TRANSITION_TABLE, f"Missing FAILURE edge for {response_node}"
             assert TRANSITION_TABLE[key] == rewind_target, (
                 f"FAILURE edge for {response_node} should route to {rewind_target}"
             )
-
-    def test_fbr_approve_edges_untouched(self) -> None:
-        """FBR gates still have their happy-path APPROVE edges (no regression)."""
-        for gate in _EXPECTED_FBR_ROUTING:
-            key = (gate, Outcome.APPROVE)
-            assert key in TRANSITION_TABLE, f"APPROVE edge missing for {gate} (regression)"
 
 
 class TestTriage:

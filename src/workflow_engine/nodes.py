@@ -108,12 +108,6 @@ _NODE_DESCRIPTIONS: dict[str, str] = {
     "ReviewUnitTests": "test-reviewer: Reviews unit tests for coverage and correctness",
     "ExecuteUnitTests": "test-executor: Executes the unit test suite and reports results",
     "Publish": "publisher: Publishes built artifacts to the target environment",
-    "FBR_BrdCheck": "brd-reviewer: Final build review gate verifying BRD consistency",
-    "FBR_BddCheck": "bdd-reviewer: Final build review gate verifying BDD consistency",
-    "FBR_FsdCheck": "fsd-reviewer: Final build review gate verifying FSD consistency",
-    "FBR_ArtifactCheck": "artifact-reviewer: Final build review gate verifying artifact consistency",
-    "FBR_ProofmarkCheck": "proofmark-reviewer: Final build review gate verifying proofmark config",
-    "FBR_UnitTestCheck": "test-reviewer: Final build review gate verifying unit test coverage",
     "FBR_EvidenceAudit": "evidence-auditor: Mechanical verification of all traceability links and citations",
     "ExecuteJobRuns": "job-executor: Executes the ETL job against real data",
     "ExecuteProofmark": "proofmark-executor: Runs proofmark comparison against job output",
@@ -239,10 +233,6 @@ MODEL_MAP: dict[str, str] = {
     "WriteFsdResponse":          "opus",
     # Build — code-vs-spec judgment
     "ReviewJobArtifacts":        "opus",
-    # FBR gates — drift detection
-    "FBR_BrdCheck":              "opus",
-    "FBR_FsdCheck":              "opus",
-    "FBR_ArtifactCheck":         "opus",
     # Validate — judgment, Pat
     "FinalSignOff":              "opus",
     "FBR_EvidenceAudit":         "opus",

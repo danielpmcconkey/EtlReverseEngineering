@@ -27,13 +27,7 @@ HAPPY_PATH: list[str] = [
     "ReviewUnitTests",          # 16 - Build
     "ExecuteUnitTests",         # 17 - Build
     "Publish",                  # 18 - Build
-    "FBR_BrdCheck",             # 19 - Build
-    "FBR_BddCheck",             # 20 - Build
-    "FBR_FsdCheck",             # 21 - Build
-    "FBR_ArtifactCheck",        # 22 - Build
-    "FBR_ProofmarkCheck",       # 23 - Build
-    "FBR_UnitTestCheck",        # 24 - Build
-    "ExecuteJobRuns",           # 25 - Validate
+    "ExecuteJobRuns",           # 19 - Validate
     "ExecuteProofmark",         # 26 - Validate
     "FinalSignOff",             # 27 - Validate
     "FBR_EvidenceAudit",        # 28 - Validate (terminal gate)
@@ -47,12 +41,6 @@ _REVIEW_NODES: set[str] = {
     "ReviewJobArtifacts",
     "ReviewProofmarkConfig",
     "ReviewUnitTests",
-    "FBR_BrdCheck",
-    "FBR_BddCheck",
-    "FBR_FsdCheck",
-    "FBR_ArtifactCheck",
-    "FBR_ProofmarkCheck",
-    "FBR_UnitTestCheck",
     "FBR_EvidenceAudit",
     "FinalSignOff",
 }
@@ -100,23 +88,10 @@ for _review_node, (_response_node, _rewind_target) in REVIEW_ROUTING.items():
 for _review_node, (_response_node, _rewind_target) in REVIEW_ROUTING.items():
     TRANSITION_TABLE[(_response_node, Outcome.FAILURE)] = _rewind_target
 
-# FBR routing: fbr_gate -> (response_node, rewind_target).
-# FBR gates reuse the same response nodes as in-flow review. No new response nodes needed.
-FBR_ROUTING: dict[str, tuple[str, str]] = {
-    "FBR_BrdCheck":       ("WriteBrdResponse",          "WriteBrd"),
-    "FBR_BddCheck":       ("WriteBddResponse",          "WriteBddTestArch"),
-    "FBR_FsdCheck":       ("WriteFsdResponse",          "WriteFsd"),
-    "FBR_ArtifactCheck":  ("BuildJobArtifactsResponse", "BuildJobArtifacts"),
-    "FBR_ProofmarkCheck": ("BuildProofmarkResponse",    "BuildProofmarkConfig"),
-    "FBR_UnitTestCheck":  ("BuildUnitTestsResponse",    "BuildUnitTests"),
-}
-
-# FBR branching edges: CONDITIONAL -> response, FAIL -> rewind.
-# Note: NO (response_node, SUCCESS) edges added here -- they already exist from REVIEW_ROUTING wiring.
-# The fbr_return_pending flag (engine.py) handles post-fix routing back to FBR_BrdCheck.
-for _fbr_gate, (_response_node, _rewind_target) in FBR_ROUTING.items():
-    TRANSITION_TABLE[(_fbr_gate, Outcome.CONDITIONAL)] = _response_node
-    TRANSITION_TABLE[(_fbr_gate, Outcome.FAIL)] = _rewind_target
+# FBR routing removed in session 22. FBR gates (19-24) cut from the happy path.
+# See AtcStrategy/POC6/BDsNotes/session22-fbr-removal.md for rationale.
+# FBR_EvidenceAudit (terminal gate) is NOT routed through FBR_ROUTING — it stays.
+FBR_ROUTING: dict[str, tuple[str, str]] = {}
 
 # FBR_EvidenceAudit: terminal gate. APPROVED advances, FAIL/REJECTED → DEAD_LETTER.
 # Not in FBR_ROUTING — no response node, no rewind, no retry.
