@@ -159,6 +159,22 @@ for _i in range(len(TRIAGE_NODES) - 1):
 # Note: Triage_Route has NO TRANSITION_TABLE entry -- engine handles TRIAGE_ROUTE directly.
 
 
+# Work-node self-retry on FAIL: any WORK node (happy-path, triage, or response) that
+# doesn't already have a (node, FAIL) edge gets a self-retry transition.
+# TERMINAL_FAIL_NODES are excluded -- they go straight to DEAD_LETTER in
+# _resolve_outcome before the transition lookup ever fires.
+_ALL_WORK_NODES = (
+    [n for n in HAPPY_PATH if NODE_TYPES[n] == NodeType.WORK]
+    + list(_RESPONSE_NODES)
+    + list(TRIAGE_NODES)
+)
+for _work_node in _ALL_WORK_NODES:
+    if _work_node in TERMINAL_FAIL_NODES:
+        continue
+    if (_work_node, Outcome.FAIL) not in TRANSITION_TABLE:
+        TRANSITION_TABLE[(_work_node, Outcome.FAIL)] = _work_node
+
+
 def validate_transition_table() -> list[str]:
     """Check that every HAPPY_PATH node has the correct outbound edge.
 

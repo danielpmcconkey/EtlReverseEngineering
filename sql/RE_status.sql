@@ -1,4 +1,4 @@
-
+-- started at 8:37
 
 with jobs as (
 	select 

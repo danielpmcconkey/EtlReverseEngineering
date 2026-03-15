@@ -54,17 +54,26 @@ into the database and read results back.
 
 1. Read the Proofmark config YAML for column match rules.
 2. Read ExecuteJobRuns process artifact for dates that produced output.
-3. **Deploy the proofmark config** alongside the job conf:
+3. **Discover the OG output directory name.** List the actual directory names
+   under `Output/curated/` to find the correct case for the job's output
+   directory. Do NOT assume `{job_name}` matches the filesystem directory
+   name — it may differ in case or format (e.g., manifest says
+   `DansTransactionSpecial` but the directory is `dans_transaction_special`).
+   Use the discovered directory name for all OG path construction.
+4. **Discover OG output dates.** List the date subdirectories under the OG
+   output directory to discover which dates have OG output. Only queue
+   comparison tasks for dates that exist in both OG and RE output directories.
+5. **Deploy the proofmark config** alongside the job conf:
    Copy `{job_dir}/artifacts/proofmark-config.yaml`
    → `/workspace/MockEtlFrameworkPython/RE/Jobs/{job_name}/proofmark-config.yaml`
-4. For each date that produced output, insert a comparison task:
+6. For each date that produced output, insert a comparison task:
    ```sql
    INSERT INTO control.proofmark_test_queue
      (config_path, lhs_path, rhs_path, job_key, date_key)
    VALUES (
      '{ETL_ROOT}/RE/Jobs/{job_name}/proofmark-config.yaml',
-     '{ETL_ROOT}/Output/curated/{job_name}/{output_table_name}/{date}/',
-     '{ETL_ROOT}/Output/re-curated/{job_name}/{output_table_name}/{date}/',
+     '{ETL_ROOT}/Output/curated/{job_name}/{output_table_name}/{date}/{output_table_name}.csv',
+     '{ETL_ROOT}/Output/re-curated/{job_name}/{output_table_name}/{date}/{output_table_name}.csv',
      '{job_name}_re',
      '{date}'
    );
@@ -72,7 +81,7 @@ into the database and read results back.
    **Critical:** `{ETL_ROOT}` is a literal string token — do NOT resolve it.
    The host Proofmark service expands it at runtime from its own environment.
    Do NOT use absolute container paths — they mean nothing on the host.
-5. Poll for results until all tasks complete:
+7. Poll for results until all tasks complete:
    ```sql
    SELECT date_key, status, result, error_message
    FROM control.proofmark_test_queue
@@ -81,10 +90,10 @@ into the database and read results back.
    ORDER BY date_key;
    ```
    Wait until all rows are `Succeeded` or `Failed`.
-6. For succeeded tasks, read `result` (`PASS` or `FAIL`) and `result_json`.
-7. For failures: extract column-level mismatch details from `result_json`.
-8. Write consolidated results to product artifact.
-9. Return SUCCESS if all dates pass, FAIL if any fail.
+8. For succeeded tasks, read `result` (`PASS` or `FAIL`) and `result_json`.
+9. For failures: extract column-level mismatch details from `result_json`.
+10. Write consolidated results to product artifact.
+11. Return SUCCESS if all dates pass, FAIL if any fail.
 
 ## Database Connection
 
@@ -116,3 +125,7 @@ or
 - Use the `claude` database role via `172.18.0.1`.
 - Only compare dates with both OG and RE output.
 - Capture enough failure detail for triage — column-level mismatches essential.
+- **Do NOT delete, update, or modify any previously inserted `proofmark_test_queue`
+  rows, even if they failed.** Failed rows are audit evidence. If a batch fails
+  and you need to retry, insert NEW rows with corrected paths. When polling for
+  results, filter by `task_id >= {first_task_id}` of your CURRENT batch only.

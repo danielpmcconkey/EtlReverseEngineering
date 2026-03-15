@@ -121,7 +121,7 @@ class AgentNode(Node):
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=600,
+                timeout=1800,
                 cwd=str(self.jobs_dir.parent),
             )
         except subprocess.TimeoutExpired:

@@ -129,6 +129,7 @@ class StepHandler:
         # Standard transition lookup
         key = (node_name, outcome)
         if key not in TRANSITION_TABLE:
+            save_job_state(job)
             fail_task(task_id)
             raise ValueError(
                 f"No transition for ({node_name}, {outcome.name})"
