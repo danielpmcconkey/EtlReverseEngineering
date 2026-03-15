@@ -532,6 +532,214 @@ class TestValidationRun:
         assert result.status == "DEAD_LETTER"
 
 
+class TestTriageHydrationFromFile:
+    """P0: Verify triage_results hydration from process artifact files.
+
+    When use_agents=True, step_handler reads verdict from disk-based process
+    artifacts written by AgentNode and populates job.triage_results. All prior
+    triage tests use stubs (DiagnosticStubNode) that write directly to
+    job.triage_results, skipping this code path entirely.
+    """
+
+    def _make_handler_with_file_hydration(self, jobs_dir: str, **kwargs) -> StepHandler:
+        """Create a StepHandler using stubs but with use_agents=True for hydration.
+
+        Trick: build with use_agents=False to get stub nodes, then flip the
+        config flag so the hydration block (lines 82-91) fires.
+        """
+        defaults = dict(n_jobs=1, max_main_retries=5, max_conditional_per_node=3, seed=None)
+        defaults.update(kwargs)
+        config = EngineConfig(**defaults)
+        handler = StepHandler(config)
+        # Flip AFTER construction so create_agent_registry is never called
+        handler._config.use_agents = True
+        handler._config.jobs_dir = jobs_dir
+        return handler
+
+    def _write_process_artifact(self, jobs_dir: str, job_id: str, node_name: str, data: dict) -> Path:
+        """Write a fake process artifact JSON file to the expected path."""
+        process_dir = Path(jobs_dir) / job_id / "process"
+        process_dir.mkdir(parents=True, exist_ok=True)
+        artifact = process_dir / f"{node_name}.json"
+        artifact.write_text(json.dumps(data))
+        return artifact
+
+    def test_verdict_fault_hydrated_from_file(self) -> None:
+        """Agent writes verdict=fault to disk → triage_results populated → Triage_Route routes correctly."""
+        _capture_logs()
+        with tempfile.TemporaryDirectory() as jobs_dir:
+            handler = self._make_handler_with_file_hydration(jobs_dir)
+            jid = make_test_job_id("hydrate_fault")
+
+            # Override triage check nodes with ScriptedNode (SUCCESS)
+            # The stub won't write to triage_results — hydration from file does that
+            for check_node in ["Triage_CheckBrd", "Triage_CheckFsd", "Triage_CheckCode", "Triage_CheckProofmark"]:
+                handler._registry[check_node] = ScriptedNode([], default=Outcome.SUCCESS)
+
+            # Set up: ExecuteProofmark FAILs to enter triage, then succeeds on retry
+            handler._registry["ExecuteProofmark"] = ScriptedNode(
+                [Outcome.FAILURE, Outcome.SUCCESS], default=Outcome.SUCCESS
+            )
+
+            # Pre-write process artifacts with fault verdict for BRD check
+            self._write_process_artifact(
+                jobs_dir, jid, "Triage_CheckBrd",
+                {"outcome": "SUCCESS", "verdict": "fault"}
+            )
+            # Other checks are clean
+            for check_node in ["Triage_CheckFsd", "Triage_CheckCode", "Triage_CheckProofmark"]:
+                self._write_process_artifact(
+                    jobs_dir, jid, check_node,
+                    {"outcome": "SUCCESS", "verdict": "clean"}
+                )
+
+            result = _run_job_via_queue(handler, jid)
+
+            assert result is not None
+            assert result.status == "COMPLETE"
+            assert result.main_retry_count == 1  # one triage rewind happened
+
+    def test_verdict_read_from_file_not_stub(self) -> None:
+        """Hydration reads from file, not from stub. ScriptedNode doesn't set triage_results."""
+        _capture_logs()
+        with tempfile.TemporaryDirectory() as jobs_dir:
+            handler = self._make_handler_with_file_hydration(jobs_dir)
+            jid = make_test_job_id("hydrate_read")
+
+            # Override check nodes — ScriptedNode doesn't write triage_results
+            for check_node in ["Triage_CheckBrd", "Triage_CheckFsd", "Triage_CheckCode", "Triage_CheckProofmark"]:
+                handler._registry[check_node] = ScriptedNode([], default=Outcome.SUCCESS)
+
+            # Write fault for FSD check
+            self._write_process_artifact(
+                jobs_dir, jid, "Triage_CheckFsd",
+                {"outcome": "SUCCESS", "verdict": "fault"}
+            )
+            # Others clean
+            for check_node in ["Triage_CheckBrd", "Triage_CheckCode", "Triage_CheckProofmark"]:
+                self._write_process_artifact(
+                    jobs_dir, jid, check_node,
+                    {"outcome": "SUCCESS", "verdict": "clean"}
+                )
+
+            # Start at Triage_CheckBrd (T3) with state already at triage stage
+            job = JobState(job_id=jid, current_node="Triage_CheckBrd", triage_results={})
+            save_job_state(job)
+            enqueue_task(jid, "Triage_CheckBrd")
+
+            # Process T3-T7
+            for _ in range(20):
+                task = claim_task()
+                if task is None:
+                    break
+                handler(task)
+
+            result = load_job_state(jid)
+            assert result.triage_results.get("Triage_CheckFsd") == "fault"
+            assert result.triage_results.get("Triage_CheckBrd") == "clean"
+
+    def test_missing_verdict_defaults_to_clean(self) -> None:
+        """Process artifact exists but has no verdict key → defaults to 'clean'."""
+        _capture_logs()
+        with tempfile.TemporaryDirectory() as jobs_dir:
+            handler = self._make_handler_with_file_hydration(jobs_dir)
+            jid = make_test_job_id("hydrate_nokey")
+
+            handler._registry["Triage_CheckBrd"] = ScriptedNode([], default=Outcome.SUCCESS)
+
+            # Artifact has outcome but no verdict key
+            self._write_process_artifact(
+                jobs_dir, jid, "Triage_CheckBrd",
+                {"outcome": "SUCCESS", "reason": "looks fine"}
+            )
+
+            job = JobState(job_id=jid, current_node="Triage_CheckBrd", triage_results={})
+            save_job_state(job)
+            enqueue_task(jid, "Triage_CheckBrd")
+
+            task = claim_task()
+            handler(task)
+
+            result = load_job_state(jid)
+            assert result.triage_results.get("Triage_CheckBrd") == "clean"
+
+    def test_malformed_json_defaults_to_clean(self) -> None:
+        """Process artifact with bad JSON → triage_results defaults to 'clean'."""
+        _capture_logs()
+        with tempfile.TemporaryDirectory() as jobs_dir:
+            handler = self._make_handler_with_file_hydration(jobs_dir)
+            jid = make_test_job_id("hydrate_badjson")
+
+            handler._registry["Triage_CheckBrd"] = ScriptedNode([], default=Outcome.SUCCESS)
+
+            # Write malformed JSON
+            process_dir = Path(jobs_dir) / jid / "process"
+            process_dir.mkdir(parents=True, exist_ok=True)
+            (process_dir / "Triage_CheckBrd.json").write_text("{not valid json!!!")
+
+            job = JobState(job_id=jid, current_node="Triage_CheckBrd", triage_results={})
+            save_job_state(job)
+            enqueue_task(jid, "Triage_CheckBrd")
+
+            task = claim_task()
+            handler(task)
+
+            result = load_job_state(jid)
+            assert result.triage_results.get("Triage_CheckBrd") == "clean"
+
+    def test_missing_process_file_no_hydration(self) -> None:
+        """No process artifact on disk → hydration is skipped, triage_results not set."""
+        _capture_logs()
+        with tempfile.TemporaryDirectory() as jobs_dir:
+            handler = self._make_handler_with_file_hydration(jobs_dir)
+            jid = make_test_job_id("hydrate_nofile")
+
+            handler._registry["Triage_CheckBrd"] = ScriptedNode([], default=Outcome.SUCCESS)
+
+            # Don't write any process artifact — the file simply doesn't exist
+            job = JobState(job_id=jid, current_node="Triage_CheckBrd", triage_results={})
+            save_job_state(job)
+            enqueue_task(jid, "Triage_CheckBrd")
+
+            task = claim_task()
+            handler(task)
+
+            result = load_job_state(jid)
+            # No hydration occurred — triage_results should NOT have an entry
+            assert "Triage_CheckBrd" not in result.triage_results
+
+    def test_use_agents_false_skips_hydration(self) -> None:
+        """With use_agents=False, hydration block is skipped even if file exists."""
+        _capture_logs()
+        with tempfile.TemporaryDirectory() as jobs_dir:
+            config = EngineConfig(n_jobs=1, seed=None, jobs_dir=jobs_dir)
+            handler = StepHandler(config)
+            jid = make_test_job_id("hydrate_skip")
+
+            # Write a fault artifact — should be IGNORED because use_agents=False
+            process_dir = Path(jobs_dir) / jid / "process"
+            process_dir.mkdir(parents=True, exist_ok=True)
+            (process_dir / "Triage_CheckBrd.json").write_text(
+                json.dumps({"outcome": "SUCCESS", "verdict": "fault"})
+            )
+
+            # With stubs (use_agents=False), DiagnosticStubNode writes directly
+            # to triage_results. The file-based hydration should NOT fire.
+            # We'll override with ScriptedNode to confirm no hydration happens.
+            handler._registry["Triage_CheckBrd"] = ScriptedNode([], default=Outcome.SUCCESS)
+
+            job = JobState(job_id=jid, current_node="Triage_CheckBrd", triage_results={})
+            save_job_state(job)
+            enqueue_task(jid, "Triage_CheckBrd")
+
+            task = claim_task()
+            handler(task)
+
+            result = load_job_state(jid)
+            # ScriptedNode doesn't write triage_results, and hydration is off
+            assert "Triage_CheckBrd" not in result.triage_results
+
+
 class TestQueueExecution:
     """Verify queue-specific behaviors that didn't exist in v0.1."""
 

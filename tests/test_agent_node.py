@@ -354,3 +354,216 @@ class TestAgentNodeExecute:
 
         cmd = mock_run.call_args[0][0]
         assert "--agents" not in cmd
+
+
+# --- _read_outcome_from_file() primary path tests ---
+
+
+class TestReadOutcomeFromFile:
+    """P0: Verify execute() reads outcome from process artifact file (primary path).
+
+    In production, agents write process artifacts to disk before subprocess
+    returns. The primary path in execute() reads from file first; stdout is
+    the fallback. All prior execute() tests hit the stdout fallback because
+    they don't pre-write process artifact files.
+    """
+
+    def test_reads_success_from_prewritten_file(self, tmp_job_env: tuple[Path, Path, Path]) -> None:
+        """File exists with valid outcome → execute() returns it, stdout fallback never used."""
+        _, jobs_dir, bp = tmp_job_env
+        node = AgentNode(node_name="WriteBrd", blueprint_path=bp, jobs_dir=jobs_dir)
+        job = JobState(job_id="job-file-01")
+
+        # Pre-write the process artifact BEFORE execute() runs
+        process_dir = jobs_dir / "job-file-01" / "process"
+        process_dir.mkdir(parents=True, exist_ok=True)
+        (process_dir / "WriteBrd.json").write_text(
+            json.dumps({"outcome": "SUCCESS", "reason": "BRD written"})
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = ""  # empty stdout — fallback would fail
+            mock_run.return_value.stderr = ""
+
+            outcome = node.execute(job)
+
+        assert outcome == Outcome.SUCCESS
+
+    def test_reads_approved_from_prewritten_file(self, tmp_job_env: tuple[Path, Path, Path]) -> None:
+        """File-based path handles APPROVED outcome correctly."""
+        _, jobs_dir, bp = tmp_job_env
+        node = AgentNode(node_name="ReviewBrd", blueprint_path=bp, jobs_dir=jobs_dir)
+        job = JobState(job_id="job-file-02")
+
+        process_dir = jobs_dir / "job-file-02" / "process"
+        process_dir.mkdir(parents=True, exist_ok=True)
+        (process_dir / "ReviewBrd.json").write_text(
+            json.dumps({"outcome": "APPROVED", "reason": "looks good"})
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = ""
+            mock_run.return_value.stderr = ""
+
+            outcome = node.execute(job)
+
+        assert outcome == Outcome.APPROVE
+
+    def test_reads_conditional_from_prewritten_file(self, tmp_job_env: tuple[Path, Path, Path]) -> None:
+        """File-based path handles CONDITIONAL outcome correctly."""
+        _, jobs_dir, bp = tmp_job_env
+        node = AgentNode(node_name="ReviewBrd", blueprint_path=bp, jobs_dir=jobs_dir)
+        job = JobState(job_id="job-file-03")
+
+        process_dir = jobs_dir / "job-file-03" / "process"
+        process_dir.mkdir(parents=True, exist_ok=True)
+        (process_dir / "ReviewBrd.json").write_text(
+            json.dumps({"outcome": "CONDITIONAL", "reason": "needs work", "conditions": ["fix X"]})
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = ""
+            mock_run.return_value.stderr = ""
+
+            outcome = node.execute(job)
+
+        assert outcome == Outcome.CONDITIONAL
+
+    def test_reads_fail_from_prewritten_file(self, tmp_job_env: tuple[Path, Path, Path]) -> None:
+        """File-based path handles FAIL → Outcome.FAILURE mapping correctly."""
+        _, jobs_dir, bp = tmp_job_env
+        node = AgentNode(node_name="WriteBrd", blueprint_path=bp, jobs_dir=jobs_dir)
+        job = JobState(job_id="job-file-04")
+
+        process_dir = jobs_dir / "job-file-04" / "process"
+        process_dir.mkdir(parents=True, exist_ok=True)
+        (process_dir / "WriteBrd.json").write_text(
+            json.dumps({"outcome": "FAIL", "reason": "could not complete"})
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = ""
+            mock_run.return_value.stderr = ""
+
+            outcome = node.execute(job)
+
+        assert outcome == Outcome.FAILURE
+
+    def test_file_takes_priority_over_stdout(self, tmp_job_env: tuple[Path, Path, Path]) -> None:
+        """When both file and stdout have outcomes, file wins."""
+        _, jobs_dir, bp = tmp_job_env
+        node = AgentNode(node_name="WriteBrd", blueprint_path=bp, jobs_dir=jobs_dir)
+        job = JobState(job_id="job-file-05")
+
+        # File says SUCCESS
+        process_dir = jobs_dir / "job-file-05" / "process"
+        process_dir.mkdir(parents=True, exist_ok=True)
+        (process_dir / "WriteBrd.json").write_text(
+            json.dumps({"outcome": "SUCCESS", "reason": "file says success"})
+        )
+
+        # Stdout says FAIL — should be ignored
+        stdout_result = _make_cli_response("FAIL", "stdout says fail")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = stdout_result
+            mock_run.return_value.stderr = ""
+
+            outcome = node.execute(job)
+
+        assert outcome == Outcome.SUCCESS
+
+    def test_malformed_json_falls_through_to_stdout(self, tmp_job_env: tuple[Path, Path, Path]) -> None:
+        """Bad JSON in process artifact → returns None → falls through to stdout fallback."""
+        _, jobs_dir, bp = tmp_job_env
+        node = AgentNode(node_name="WriteBrd", blueprint_path=bp, jobs_dir=jobs_dir)
+        job = JobState(job_id="job-file-06")
+
+        process_dir = jobs_dir / "job-file-06" / "process"
+        process_dir.mkdir(parents=True, exist_ok=True)
+        (process_dir / "WriteBrd.json").write_text("{this is not valid json!!")
+
+        # Stdout has a valid response as fallback
+        stdout_result = _make_cli_response("SUCCESS", "fallback worked")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = stdout_result
+            mock_run.return_value.stderr = ""
+
+            outcome = node.execute(job)
+
+        assert outcome == Outcome.SUCCESS
+
+    def test_missing_outcome_key_falls_through_to_stdout(self, tmp_job_env: tuple[Path, Path, Path]) -> None:
+        """Process artifact missing 'outcome' key → returns None → falls through to stdout."""
+        _, jobs_dir, bp = tmp_job_env
+        node = AgentNode(node_name="WriteBrd", blueprint_path=bp, jobs_dir=jobs_dir)
+        job = JobState(job_id="job-file-07")
+
+        process_dir = jobs_dir / "job-file-07" / "process"
+        process_dir.mkdir(parents=True, exist_ok=True)
+        (process_dir / "WriteBrd.json").write_text(
+            json.dumps({"result": "done", "reason": "no outcome key here"})
+        )
+
+        stdout_result = _make_cli_response("SUCCESS", "fallback worked")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = stdout_result
+            mock_run.return_value.stderr = ""
+
+            outcome = node.execute(job)
+
+        assert outcome == Outcome.SUCCESS
+
+    def test_unknown_outcome_value_falls_through_to_stdout(self, tmp_job_env: tuple[Path, Path, Path]) -> None:
+        """Process artifact has unknown outcome string → returns None → falls through to stdout."""
+        _, jobs_dir, bp = tmp_job_env
+        node = AgentNode(node_name="WriteBrd", blueprint_path=bp, jobs_dir=jobs_dir)
+        job = JobState(job_id="job-file-08")
+
+        process_dir = jobs_dir / "job-file-08" / "process"
+        process_dir.mkdir(parents=True, exist_ok=True)
+        (process_dir / "WriteBrd.json").write_text(
+            json.dumps({"outcome": "MAYBE_LATER", "reason": "not a valid outcome"})
+        )
+
+        stdout_result = _make_cli_response("SUCCESS", "fallback worked")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = stdout_result
+            mock_run.return_value.stderr = ""
+
+            outcome = node.execute(job)
+
+        assert outcome == Outcome.SUCCESS
+
+    def test_nonzero_exit_reads_from_file_if_present(self, tmp_job_env: tuple[Path, Path, Path]) -> None:
+        """Non-zero exit + process artifact exists → reads outcome from file."""
+        _, jobs_dir, bp = tmp_job_env
+        node = AgentNode(node_name="WriteBrd", blueprint_path=bp, jobs_dir=jobs_dir)
+        job = JobState(job_id="job-file-09")
+
+        # Agent wrote file before crashing
+        process_dir = jobs_dir / "job-file-09" / "process"
+        process_dir.mkdir(parents=True, exist_ok=True)
+        (process_dir / "WriteBrd.json").write_text(
+            json.dumps({"outcome": "SUCCESS", "reason": "wrote before crash"})
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 1
+            mock_run.return_value.stdout = ""
+            mock_run.return_value.stderr = "segfault or something"
+
+            outcome = node.execute(job)
+
+        assert outcome == Outcome.SUCCESS
