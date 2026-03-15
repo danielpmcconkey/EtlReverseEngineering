@@ -4,26 +4,42 @@ Source: `src/workflow_engine/agent_node.py`, `src/workflow_engine/nodes.py` (`cr
 
 ## AgentNode
 
-`AgentNode` replaces stub nodes with real Claude CLI invocations. Enabled when `EngineConfig.use_agents` is true.
+`AgentNode` replaces stub nodes with real Claude CLI invocations. Enabled when `EngineConfig.use_agents` is true (the default).
 
 Each agent gets:
 - A **blueprint** (markdown file) as the system prompt via `--append-system-prompt`
 - A **user prompt** with job context (job ID, directories, current node, retry count, last rejection reason)
-- Model and budget constraints from `EngineConfig`
+- **Model** from `MODEL_MAP` (per-node) or CLI `--model` fallback
+- ETL effective date range (for date-aware nodes only)
 
 CLI invocation:
 ```
 claude -p \
   --append-system-prompt <blueprint_text> \
   --output-format json \
-  --model <model> \
-  --max-budget-usd <budget> \
+  --model <MODEL_MAP[node] or CLI fallback> \
   --dangerously-skip-permissions \
   --no-session-persistence \
+  [--agents <sub_agent_json>] \
   <prompt>
 ```
 
-Working directory is set to the parent of `jobs_dir`. Timeout is 600 seconds.
+Working directory is set to the parent of `jobs_dir`. Per-step timeout is **1800 seconds** (30 minutes).
+
+## Per-Node Model Assignment
+
+The model for each agent invocation is determined by:
+
+1. **`MODEL_MAP`** in `nodes.py` -- explicit per-node assignments (16 opus, 2 haiku)
+2. **CLI `--model` flag** -- fallback for all other nodes (default: sonnet)
+
+The `create_agent_registry()` function resolves this: `MODEL_MAP.get(node_name, model)`.
+
+## Sub-Agents (Code Quality Review)
+
+Author nodes that generate code or config get an internal code quality reviewer sub-agent via Claude's `--agents` flag. The sub-agent catches slop before the output reaches the dedicated reviewer downstream.
+
+Author nodes: `BuildJobArtifacts`, `BuildJobArtifactsResponse`, `BuildProofmarkConfig`, `BuildProofmarkResponse`, `BuildUnitTests`, `BuildUnitTestsResponse`.
 
 ## Two-Artifact-Stream Architecture
 
@@ -77,6 +93,8 @@ Blueprints live at `{blueprints_dir}/{blueprint-name}.md`. The blueprint name is
 
 Multiple nodes can share a blueprint. For example, `WriteBrd` and `WriteBrdResponse` both use `brd-writer.md`. Similarly, `ReviewBrd` and `FBR_BrdCheck` both use `brd-reviewer.md`.
 
+All C# references have been removed from blueprints. The OG codebase is Python (MockEtlFrameworkPython). All paths in blueprints are hardcoded container paths. **`{ETL_ROOT}` is the ONLY remaining token** -- it's used as a literal string in DB entries for host-side resolution, not as a path the agent resolves. External modules use the `execute(shared_state) -> shared_state` + `register()` pattern.
+
 Blueprint-to-node mapping (derived from `_NODE_DESCRIPTIONS` and `_RESPONSE_NODE_DESCRIPTIONS` in `nodes.py`):
 
 | Blueprint | Nodes |
@@ -116,10 +134,10 @@ Blueprint-to-node mapping (derived from `_NODE_DESCRIPTIONS` and `_RESPONSE_NODE
 
 | Failure Mode | Result |
 |---|---|
-| Subprocess timeout (600s) | Outcome.FAILURE |
+| Subprocess timeout (1800s) | Outcome.FAILURE |
 | Non-zero exit code | Outcome.FAILURE |
 | Unparseable CLI JSON | Outcome.FAILURE |
 | No outcome JSON in agent text | Outcome.FAILURE |
 | Unknown outcome string | Outcome.FAILURE |
 
-All failures are logged with structured fields (node, job_id, error details).
+All failures are logged with structured fields (node, job_id, error details). FAILURE is then promoted to FAIL by `_resolve_outcome` for nodes without explicit FAILURE transitions, triggering the self-retry path.

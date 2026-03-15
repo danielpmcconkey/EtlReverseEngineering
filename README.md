@@ -1,150 +1,151 @@
 # EtlReverseEngineering
 
-Deterministic orchestrator CLI for reverse engineering 105 ETL jobs from [MockEtlFramework](https://github.com/danielpmcconkey/MockEtlFramework) using AI agents.
-
-## The Goal
-
-Build a C# CLI application that orchestrates the AI-driven reverse engineering of 105 ETL jobs. The orchestrator itself contains **zero LLM logic** — it's a deterministic loop that manages a pool of workers, dispatches tasks to Claude via the CLI, and advances each job through a defined workflow based on outcomes.
+Workflow engine that reverse-engineers legacy ETL jobs from [MockEtlFrameworkPython](https://github.com/danielpmcconkey/MockEtlFrameworkPython) using AI agents. Runs a 28-node state machine pipeline where each node invokes Claude CLI with a blueprint prompt. Jobs progress through **Plan -> Define -> Design -> Build -> Validate** stages.
 
 ## Why This Exists
 
-POC5 used an LLM-based orchestrator (GSD executor) that suffered from context rot. As conversations grew, the orchestrator lost its constraints and began fabricating results — copying OG output to fake RE output, writing plausible summaries for work it didn't do. The core lesson: **the orchestrator must be dumb.** All intelligence lives in the agents, which get a fresh context on every invocation.
+POC5 used an LLM-based orchestrator that suffered from context rot. As conversations grew, the orchestrator fabricated results -- copying OG output to fake RE output, writing plausible summaries for work it didn't do. The fix: **the orchestrator is dumb.** It's a deterministic state machine. All intelligence lives in the agents, which get a fresh context on every invocation.
 
 ## Architecture
 
-### The Orchestrator (C#, no LLM)
+### The Engine (Python, no LLM)
 
 A deterministic processing loop that:
 
 1. Polls a Postgres task queue for unclaimed work
-2. Claims a task (thread-safe)
+2. Claims a task (thread-safe via `SELECT ... FOR UPDATE SKIP LOCKED`)
 3. Dispatches it to the appropriate Claude agent via `claude -p`
-4. Parses the structured response
-5. Writes results and enqueues the next step(s) per the workflow definition
-6. Manages a pool of ~12 concurrent workers across all jobs
+4. Parses the structured JSON response
+5. Writes results and enqueues the next step per the transition table
+6. Manages a pool of concurrent workers across all jobs
 
-The orchestrator doesn't make decisions. It follows a workflow definition — a state machine that maps (current_state, outcome) → next_state. The workflow knows things like "if this is the 5th triage attempt for this job, mark it failed and move on."
-
-### 105 Independent Pipelines
-
-Each job gets its own full lifecycle pipeline. No cross-job contamination. One job's failure doesn't cascade to others.
+The engine doesn't make decisions. It follows a transition table -- a state machine that maps `(current_node, outcome) -> next_node`.
 
 ### Agent Invocation
 
 Each agent is invoked as a fresh Claude CLI subprocess:
 
 ```bash
-claude -p "<task prompt>" \
-  --system-prompt "$(cat blueprints/<skill>.md)" \
-  --dangerously-skip-permissions \
-  --model sonnet \
-  --max-budget-usd 0.50 \
+claude -p \
+  --append-system-prompt <blueprint_text> \
   --output-format json \
-  --allowedTools "Bash Read Grep"
+  --model <per-node model or CLI fallback> \
+  --dangerously-skip-permissions \
+  --no-session-persistence \
+  <prompt>
 ```
 
-Agents claim a task, do their work, return a structured result, and die. No state carried between invocations.
+Agents do their work, return a structured JSON result with an `"outcome"` key, and die. No state carried between invocations. Per-step timeout is **1800 seconds** (30 minutes).
 
-### Polyglot Reality
+### Per-Node Model Mapping
 
-The orchestrator is C#. The agents produce **Python** artifacts targeting [MockEtlFrameworkPython](https://github.com/danielpmcconkey/MockEtlFrameworkPython). Python was chosen for the target framework because it supports dynamic class loading — eliminating the compile-rebuild cycle that created a human-in-the-middle bottleneck in POC5.
+`MODEL_MAP` in `src/workflow_engine/nodes.py` assigns models per node. The CLI `--model` flag is the **fallback default**, not a universal assignment.
+
+| Tier | Nodes | Count | Rationale |
+|------|-------|-------|-----------|
+| **Opus** | Spec writing (BRD/BDD/FSD + responses), adversarial reviews (ReviewBrd/Bdd/Fsd, ReviewJobArtifacts), FBR drift gates (BrdCheck/FsdCheck/ArtifactCheck), judgment nodes (FinalSignOff, EvidenceAudit), triage OG tracing (AnalyzeOgFlow) | 16 | Spec/design and adversarial review need the strongest model |
+| **Haiku** | Publish, ExecuteProofmark | 2 | Mechanical execution -- file copy, queue+poll |
+| **Sonnet** | Everything else (via CLI `--model` fallback) | 23 | Solid default for plan, build, test, remaining triage |
 
 ### Task Queue (Postgres)
 
-A new task queue table in the `control` schema (existing database, connection details in the orchestrator config). The queue supports:
+Tables live in the `control` schema with `re_` prefix. Key constraint:
 
-- Thread-safe claiming (SELECT ... FOR UPDATE SKIP LOCKED or equivalent)
-- Per-job isolation
-- State tracking (workflow position for each job)
-- Attempt counting (for circuit breaker logic)
+- **`ix_re_task_queue_one_active`**: `UNIQUE` partial index on `(job_id) WHERE status IN ('pending', 'claimed')`. Only one active queue entry per job allowed.
+- To restart a stalled job: mark orphaned `claimed` entries as `failed` first, THEN insert a new `pending` entry.
 
-## Skills, Not Agents
+### Two-Artifact-Stream Architecture
 
-The POC6 taxonomy (see below) has a lot of leaf nodes that are really "call Claude with a different prompt." Rather than treating each as a separate agent type, we define **discrete skills as C# functions**. A skill encapsulates:
+Each job gets a directory at `jobs/{job_id}/` with two subdirectories:
 
-- The prompt template
-- The allowed tools
-- The expected output schema
-- The model tier (sonnet vs opus)
-- The budget cap
+- **`process/`** -- JSON files for inter-agent communication. Written on SUCCESS/APPROVE/CONDITIONAL. Cleaned up on rewind.
+- **`artifacts/`** -- Deliverable files (BRDs, FSDs, job configs, tests, etc.). Persists across rewinds.
 
-The orchestrator calls the right skill function based on the task type. The skill function builds the CLI invocation and parses the result.
+## CLI Usage
 
-## Workflow Definition
-
-Each job progresses through a waterfall: **Plan → Define → Design → Build → Validate**. Within each stage are discrete steps with review/response cycles.
-
-The workflow should be represented as a state machine — not a giant if/else chain. Key properties:
-
-- Each state has defined transitions based on outcome (pass/fail/error)
-- Circuit breakers are guard conditions on transitions (e.g., max 4 triage attempts)
-- The orchestrator looks up the transition, doesn't compute it
-- The database tracks each job's current state and attempt counts
-
-## Per-Job Waterfall Pipeline
-
-The full taxonomy of steps each job goes through:
-
-```
-RE Job Pipeline
-├── Plan
-│   ├── Locate OG source files
-│   ├── Inventory outputs (DataframeWriter, External modules)
-│   ├── Inventory data sources
-│   └── Note dependencies
-├── Define
-│   ├── Write BRD (data flow, transformation rules, output schemas, anti-patterns)
-│   ├── Review BRD (verify evidence, approve/reject)
-│   └── Re-review BRD (triggered by final build review)
-├── Design
-│   ├── Write BDD test architecture (acceptance criteria, scenarios, fixtures, edge cases)
-│   ├── Review BDD
-│   ├── Write FSD (data flow, sourcing, transformations, module sequence, traceability)
-│   ├── Review FSD
-│   ├── Re-review BDD (triggered by final build review)
-│   └── Re-review FSD (triggered by final build review)
-├── Build
-│   ├── Build job artifacts (conf files, external modules)
-│   ├── Review job artifacts
-│   ├── Build proofmark config (match rules from BRD schemas)
-│   ├── Review proofmark config
-│   ├── Build unit tests (from BDD architecture)
-│   ├── Review unit tests
-│   ├── Execute unit tests (run, triage failures)
-│   ├── Publish (register in control.jobs)
-│   └── Final build review (re-execute all reviewers, verify publication)
-└── Validate
-    ├── Execute job runs (queue effective dates, monitor, triage)
-    ├── Execute proofmark (compare OG vs RE output)
-    ├── Triage proofmark failures (RCA, fix, re-queue)
-    └── Final sign-off (confirm all dates pass, summarize results)
+```bash
+cd /workspace/EtlReverseEngineering
+source .venv/bin/activate
+python -m workflow_engine jobs/batch-12-manifest.json \
+  --etl-start-date 2024-10-01 \
+  --etl-end-date 2024-10-31 \
+  --model sonnet \
+  --n-jobs 12
 ```
 
-The full detailed taxonomy with all sub-steps is maintained at: https://github.com/danielpmcconkey/AtcStrategy (private, POC6/BDsNotes/agent-taxonomy.md)
+| Flag | Default | Description |
+|------|---------|-------------|
+| `manifest_path` | (required) | Path to job manifest JSON |
+| `--n-jobs` | 5 | Concurrent workers |
+| `--model` | sonnet | Fallback model for nodes not in MODEL_MAP |
+| `--etl-start-date` | (none) | First effective date (YYYY-MM-DD) |
+| `--etl-end-date` | (none) | Last effective date (YYYY-MM-DD) |
+| `--max-retries` | 5 | Max main retries per job before DEAD_LETTER |
+| `--max-conditional` | 3 | Max consecutive CONDITIONALs per review node before escalation to FAIL |
+| `--timeout` | 14400 | Max seconds for entire engine run |
+| `--stubs` | (flag) | Use stub nodes instead of agents (testing) |
+| `--blueprints-dir` | blueprints | Blueprint markdown directory |
+| `--jobs-dir` | jobs | Job output directory |
 
-## Design Decisions Already Made
+## Pipeline Overview
 
-- **BDD before FSD** — tests drive the spec, not the other way around
-- **All agents cite evidence** — BRD#, BDD scenario#, code references. No unsupported claims.
-- **Review Response agents are separate from Write agents** — atomicity matters
-- **Publish and Locate OG might not need LLM agents** — could be deterministic functions
-- **Circuit breakers are workflow concerns** — the state machine enforces retry limits, not the agents
+28 happy-path nodes, 6 response nodes (off happy path), 7 triage nodes:
 
-## Open Questions
+```
+Plan (1-4)
+  LocateOgSourceFiles -> InventoryOutputs -> InventoryDataSources -> NoteDependencies
 
-These are intentionally left open for the design/planning phase:
+Define (5-6)
+  WriteBrd -> ReviewBrd
 
-- Blueprint format — what goes in each skill's system prompt?
-- Exact queue schema design
-- Failure handling details — max retries per stage?
-- Cost model — budget per skill? Per job total?
-- Per-job directory isolation strategy
-- How do Validate-stage tasks interact with external systems (running jobs, running proofmark) without wasting worker slots on blocking waits?
-- Which jobs to tackle first — easiest (Append mode) or hardest?
+Design (7-10)
+  WriteBddTestArch -> ReviewBdd -> WriteFsd -> ReviewFsd
+
+Build (11-24)
+  BuildJobArtifacts -> ReviewJobArtifacts -> BuildProofmarkConfig -> ReviewProofmarkConfig
+  -> BuildUnitTests -> ReviewUnitTests -> ExecuteUnitTests -> Publish
+  -> FBR_BrdCheck -> FBR_BddCheck -> FBR_FsdCheck -> FBR_ArtifactCheck
+  -> FBR_ProofmarkCheck -> FBR_UnitTestCheck
+
+Validate (25-28)
+  ExecuteJobRuns -> ExecuteProofmark -> FinalSignOff -> FBR_EvidenceAudit -> COMPLETE
+
+Response nodes (off happy path, loop back to reviewer):
+  WriteBrdResponse, WriteBddResponse, WriteFsdResponse,
+  BuildJobArtifactsResponse, BuildProofmarkResponse, BuildUnitTestsResponse
+
+Triage sub-pipeline (entered on ExecuteProofmark FAILURE):
+  Triage_ProfileData -> Triage_AnalyzeOgFlow -> Triage_CheckBrd -> Triage_CheckFsd
+  -> Triage_CheckCode -> Triage_CheckProofmark -> Triage_Route
+```
+
+See `Documentation/` for detailed docs on transitions, FBR gauntlet, triage, and agent integration.
+
+## Work-Node FAIL Transitions
+
+All WORK nodes have self-retry FAIL transitions in the transition table. When a WORK node returns FAIL (e.g., agent timeout, bad JSON, crash), it retries itself. Previously only REVIEW/FBR nodes had FAIL edges, which caused zombie jobs when work nodes failed with no transition. The step handler now saves job state before raising `ValueError` on missing transitions as a safety net.
+
+## Blueprint System
+
+Blueprints live at `blueprints/{blueprint-name}.md`. The blueprint name is extracted from the node description (e.g., `"brd-writer: Writes the BRD..."` maps to `blueprints/brd-writer.md`). Multiple nodes share blueprints -- `WriteBrd` and `WriteBrdResponse` both use `brd-writer.md`.
+
+All C# references have been removed from blueprints. The OG codebase is Python (MockEtlFrameworkPython). All paths are hardcoded container paths. **`{ETL_ROOT}` is the ONLY token** -- used as a literal string in DB entries for host-side resolution. External modules use the `execute(shared_state) -> shared_state` + `register()` pattern.
+
+## Key Paths (Container)
+
+| What | Path |
+|------|------|
+| OG job confs | `/workspace/MockEtlFrameworkPython/JobExecutor/Jobs/` |
+| OG external modules | `/workspace/MockEtlFrameworkPython/src/etl/modules/externals/` |
+| OG output | `/workspace/MockEtlFrameworkPython/Output/curated/` |
+| RE output | `/workspace/MockEtlFrameworkPython/Output/re-curated/` |
+| RE job confs deployed to | `/workspace/MockEtlFrameworkPython/RE/Jobs/` |
+| RE externals deployed to | `/workspace/MockEtlFrameworkPython/RE/externals/` |
+| Framework docs | `/workspace/MockEtlFrameworkPython/Documentation/` |
+| Proofmark docs | `/workspace/proofmark/Documentation/` |
 
 ## Related Repos
 
-- [MockEtlFramework](https://github.com/danielpmcconkey/MockEtlFramework) — The original C# ETL engine and job configs
-- [MockEtlFrameworkPython](https://github.com/danielpmcconkey/MockEtlFrameworkPython) — Python rebuild of the ETL engine (target for RE'd jobs)
-- [proofmark](https://github.com/danielpmcconkey/proofmark) — Comparison engine for OG vs RE output verification
-- [AtcStrategy](https://github.com/danielpmcconkey/AtcStrategy) — (private) Design notes, taxonomy, architecture docs
+- [MockEtlFrameworkPython](https://github.com/danielpmcconkey/MockEtlFrameworkPython) -- Python ETL engine (target for RE'd jobs)
+- [proofmark](https://github.com/danielpmcconkey/proofmark) -- Comparison engine for OG vs RE output verification
+- [AtcStrategy](https://github.com/danielpmcconkey/AtcStrategy) -- (private) Design notes, taxonomy, architecture docs
