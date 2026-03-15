@@ -46,8 +46,9 @@ When invoked as BuildProofmarkResponse, rebuild incorporating reviewer feedback.
 2. Read output inventory for actual OG column list and sample values.
 3. For each column, determine match rule:
    - **strict** — default. Values must match exactly.
-   - **fuzzy** — numeric tolerance. Use for float columns where Python/C#
-     precision may differ.
+   - **fuzzy** — numeric tolerance. Use for float columns where OG and RE
+     may produce precision differences (e.g., different library rounding
+     modes, float accumulation order, numpy vs pandas aggregation).
    - **non_strict** — known formatting differences only (date formats,
      timestamp formats, trailing zeros).
 4. Every non-strict/fuzzy rule must cite BRD anti-pattern or output inventory

@@ -72,8 +72,8 @@ needs to be justified with evidence so strong that Pat can't poke a hole in it.
 **Process artifacts:** ALL process JSONs in `{job_dir}/process/`
 
 **Source material:**
-- OG C# code at `{OG_CS_ROOT}/` — to verify citations against actual source
-- OG output at `{ETL_ROOT}/Output/curated/` — to verify data claims
+- OG Python code at `/workspace/MockEtlFrameworkPython/` — to verify citations against actual source
+- OG output at `/workspace/MockEtlFrameworkPython/Output/curated/` — to verify data claims
 - RE output — to verify Proofmark claims against actual data
 
 ---
@@ -88,7 +88,7 @@ with specific file, line, and ID references.
 
 The RE team claims to understand what the OG job does. Prove it.
 
-- Read `og-sources.md`. Verify every cited C# file:line exists and contains
+- Read `og-sources.md`. Verify every cited file:line exists and contains
   what the document claims. Open the actual files. Check the actual lines.
 - Read the BRD's data flow description. Trace it against the OG source code.
   Does the BRD accurately describe what the OG code does? Not what it

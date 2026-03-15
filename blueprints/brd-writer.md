@@ -32,7 +32,7 @@ incorporating the reviewer's feedback.
 - `{job_dir}/artifacts/dependencies.md`
 
 **Source material:**
-- OG C# source code — follow file paths cited in og-sources.md
+- OG Python source code — follow file paths cited in og-sources.md
 
 ## Writes
 
@@ -50,7 +50,7 @@ incorporating the reviewer's feedback.
 
 1. Read all four plan product artifacts.
 2. Read OG source code files cited in og-sources.md — especially External
-   module C# code for transformation logic.
+   module Python code for transformation logic.
 3. Create numbered BRD requirements for each data source, transformation rule,
    and output specification.
 4. Catalog anti-patterns: inefficient SQL, unnecessary complexity, hardcoded

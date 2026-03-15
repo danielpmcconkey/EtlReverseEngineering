@@ -25,7 +25,7 @@ produce output equivalent to the OG job.
 - `{job_dir}/artifacts/bdd_specs/bdd.md`
 
 **Source material:**
-- Python framework docs at `{FW_DOCS}/`
+- Python framework docs at `/workspace/MockEtlFrameworkPython/Documentation/`
 
 For FBR, also:
 - `{job_dir}/artifacts/code/jobconf.json`

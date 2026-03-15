@@ -29,8 +29,8 @@ feedback.
 - `{job_dir}/artifacts/brd.md`
 
 **Source material:**
-- Python framework docs at `{FW_DOCS}/` — module reference
-- Existing external modules at `{ETL_ROOT}/src/etl/modules/externals/`
+- Python framework docs at `/workspace/MockEtlFrameworkPython/Documentation/` — module reference
+- Existing external modules at `/workspace/MockEtlFrameworkPython/src/etl/modules/externals/`
   — reference for code style and module interface patterns
 
 ## Writes
@@ -76,7 +76,7 @@ feedback.
   - The `register()` call inside the module must use the `_re` typeName
 - **Output directory:** Job confs must set `outputDirectory` to `Output/re-curated`
   (NOT `Output/curated` — that's OG output, read-only). This is a relative path
-  the framework resolves against `{ETL_ROOT}` at runtime.
+  the framework resolves at runtime on the host.
 - **External modules:** The job conf uses `typeName` to reference external modules.
   The framework discovers modules by scanning its externals directories at import
   time — no file path in the conf. Write the `.py` file to `{job_dir}/artifacts/code/`.

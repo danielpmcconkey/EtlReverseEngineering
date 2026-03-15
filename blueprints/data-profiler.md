@@ -25,7 +25,7 @@ agent consumes your profile.
 - `{job_dir}/artifacts/proofmark-config.yaml`
 
 **Source material:**
-- OG output at `{ETL_ROOT}/Output/curated/{job_dir_name}/{date}/`
+- OG output at `/workspace/MockEtlFrameworkPython/Output/curated/{job_dir_name}/{date}/`
 - RE output files
 
 ## Writes

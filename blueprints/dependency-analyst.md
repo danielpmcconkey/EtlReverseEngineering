@@ -29,7 +29,7 @@ or must wait for others.
 
 **Source material:**
 - Job scope manifest at `manifest_path`
-- OG job confs at `{OG_CS_ROOT}/JobExecutor/Jobs/` — spot-check other jobs
+- OG job confs at `/workspace/MockEtlFrameworkPython/JobExecutor/Jobs/` — spot-check other jobs
   when dependency is suspected.
 
 ## Writes

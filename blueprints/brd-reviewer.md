@@ -35,8 +35,8 @@ For FBR, also:
 - `{job_dir}/artifacts/code/jobconf.json`
 
 **Source material:**
-- OG C# source code (verify cited evidence)
-- OG curated output at `{ETL_ROOT}/Output/curated/` (verify schema claims)
+- OG Python source code (verify cited evidence)
+- OG curated output at `/workspace/MockEtlFrameworkPython/Output/curated/` (verify schema claims)
 
 ## Writes
 
@@ -59,7 +59,7 @@ No product artifact — review findings live in the process JSON body.
    cites specific data behavior or framework limitation that makes
    remediation unsafe. Challenge "reproduce faithfully" recommendations
    that lack concrete evidence.
-5. For output schemas, compare against actual OG output at `{ETL_ROOT}/Output/curated/`.
+5. For output schemas, compare against actual OG output at `/workspace/MockEtlFrameworkPython/Output/curated/`.
 6. For FBR: also check consistency with FSD and built artifacts.
 
 ## stdout contract

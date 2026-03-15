@@ -24,7 +24,7 @@ is the "answer key" all downstream artifacts are measured against.
 
 **Source material:**
 - OG job conf at `og_conf_path`
-- OG curated output at `{ETL_ROOT}/Output/curated/{job_dir_name}/`
+- OG curated output at `/workspace/MockEtlFrameworkPython/Output/curated/{job_dir_name}/`
 
 ## Writes
 
@@ -45,7 +45,7 @@ is the "answer key" all downstream artifacts are measured against.
    ParquetFileWriter, DataFrameWriter, or External modules that produce output.
 3. For each output module, extract config: path, write mode, columns,
    header/trailer settings.
-4. Examine actual OG output at `{ETL_ROOT}/Output/curated/{job_dir_name}/`:
+4. Examine actual OG output at `/workspace/MockEtlFrameworkPython/Output/curated/{job_dir_name}/`:
    a. List date subdirectories.
    b. Read a sample file — document actual column headers, row count, sample values.
    c. Note the schema as observed in the real file.

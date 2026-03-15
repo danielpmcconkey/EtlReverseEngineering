@@ -29,7 +29,7 @@ rewrite incorporating reviewer feedback.
 
 **Source material:**
 - Existing tests at `/workspace/MockEtlFrameworkPython/tests/` — patterns only
-- Framework docs at `{FW_DOCS}/testing.md`
+- Framework docs at `/workspace/MockEtlFrameworkPython/Documentation/testing.md`
 
 ## Writes
 

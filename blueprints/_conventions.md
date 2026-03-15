@@ -105,54 +105,54 @@ An agent reads from three places:
    happened upstream and where deliverables are.
 2. **Product artifacts from predecessors** — the actual deliverables to
    review, build on, or verify.
-3. **Source material in MockEtlFramework** — the OG C# job code being
+3. **Source material in MockEtlFrameworkPython** — the OG job code being
    reverse-engineered. Read-only. Agents study it, never modify it.
+   - OG job confs: `/workspace/MockEtlFrameworkPython/JobExecutor/Jobs/`
+   - OG external modules: `/workspace/MockEtlFrameworkPython/src/etl/modules/externals/`
+   - OG output: `/workspace/MockEtlFrameworkPython/Output/curated/`
 
-## Path Tokens
+## Paths
 
-### Orchestrator-resolved tokens
+### Container paths (hardcoded)
 
-These are resolved by the orchestrator before the agent sees them:
+All paths in blueprints are absolute container paths. No tokens, no indirection.
 
-| Token | Meaning | Example (container) |
-|-------|---------|---------------------|
-| `{ORCH_ROOT}` | EtlReverseEngineering root | `/workspace/EtlReverseEngineering` |
-| `{JOB_DIR}` | Per-job directory | `{ORCH_ROOT}/jobs/{job_id}` |
-| `{OG_CS_ROOT}` | OG C# MockEtlFramework repo | `/workspace/MockEtlFramework` |
-| `{FW_DOCS}` | Python framework documentation | `/workspace/MockEtlFrameworkPython/Documentation` |
+| Path | What | Mode |
+|------|------|------|
+| `/workspace/EtlReverseEngineering/` | Orchestrator root | Read/Write |
+| `/workspace/EtlReverseEngineering/jobs/{job_id}/` | Per-job working directory | Read/Write |
+| `/workspace/MockEtlFrameworkPython/` | OG ETL framework (Python) | Read-only |
+| `/workspace/MockEtlFrameworkPython/JobExecutor/Jobs/` | OG job confs (JSON) | Read-only |
+| `/workspace/MockEtlFrameworkPython/src/etl/modules/externals/` | OG external modules (Python) | Read-only |
+| `/workspace/MockEtlFrameworkPython/Output/curated/` | OG curated output | Read-only |
+| `/workspace/MockEtlFrameworkPython/Output/re-curated/` | RE curated output (produced by host) | Read-only |
+| `/workspace/MockEtlFrameworkPython/RE/Jobs/` | RE job confs + proofmark configs | Write (publisher only) |
+| `/workspace/MockEtlFrameworkPython/RE/externals/` | RE external modules | Write (publisher only) |
+| `/workspace/MockEtlFrameworkPython/Documentation/` | Framework docs | Read-only |
+| `/workspace/proofmark/Documentation/` | Proofmark docs | Read-only |
 
-### Literal tokens (NOT resolved by orchestrator)
+### The `{ETL_ROOT}` literal
 
-| Token | Meaning | Why literal |
-|-------|---------|-------------|
-| `{ETL_ROOT}` | Python ETL framework root | Host-side services resolve this from their own env var at runtime. The host path differs from the container path. Agents must write `{ETL_ROOT}` as a literal string in all database entries and file references. |
+`{ETL_ROOT}` is **not a token you resolve**. It is a literal string that
+agents write into database entries. The host-side services (ETL framework,
+Proofmark) expand it from their own environment variable at runtime. The
+host path differs from the container path — that's the whole point.
 
-### Derived paths (not separate tokens — use `{ETL_ROOT}` prefix)
+**Use `{ETL_ROOT}` ONLY in:**
+- `control.jobs` path entries (publisher)
+- `control.proofmark_test_queue` path entries (proofmark executor)
 
-| Path | Meaning | Mode |
-|------|---------|------|
-| `{ETL_ROOT}/Output/curated/` | OG curated output | Read-only (Docker ro mount) |
-| `{ETL_ROOT}/Output/re-curated/` | RE curated output (produced by host) | Read-only (Docker ro mount) |
-| `{ETL_ROOT}/src/etl/modules/externals/` | OG external modules (reference) | Read |
-| `{ETL_ROOT}/JobExecutor/Jobs/` | OG job confs (reference) | Read |
-| `{ETL_ROOT}/RE/Jobs/` | RE job confs + proofmark configs | Write (symlinked to host) |
-| `{ETL_ROOT}/RE/externals/` | RE external modules | Write (symlinked to host) |
-
-### Queue entry paths
-
-When writing paths into Postgres queue tables (`control.task_queue`,
-`control.proofmark_test_queue`), always use `{ETL_ROOT}` tokens — NOT
-orchestrator tokens like `{ORCH_ROOT}`. The host-side services expand
-`{ETL_ROOT}` from the env var at runtime. Orchestrator tokens mean nothing
-to Proofmark or the ETL framework.
+**Never use `{ETL_ROOT}` when:**
+- Reading or writing files on the container filesystem
+- Referencing paths in blueprints, artifacts, or process JSONs
 
 Example Proofmark queue entry:
 ```sql
 INSERT INTO control.proofmark_test_queue (config_path, lhs_path, rhs_path, job_key, date_key)
 VALUES (
   '{ETL_ROOT}/RE/Jobs/{job_name}/proofmark-config.yaml',
-  '{ETL_ROOT}/Output/curated/{job_name}/{output_table}/{date}/',
-  '{ETL_ROOT}/Output/re-curated/{job_name}/{output_table}/{date}/',
+  '{ETL_ROOT}/Output/curated/{job_name}/{output_table}/{date}/{output_table}.csv',
+  '{ETL_ROOT}/Output/re-curated/{job_name}/{output_table}/{date}/{output_table}.csv',
   '{job_name}_re',
   '{date}'
 );
@@ -189,16 +189,33 @@ NOT the same as the ETL framework's `job_id` in `control.jobs`.
 Do NOT confuse the orchestrator's job ID with the framework's `job_id`.
 Do NOT use the OG job name in queue tables — always append `_re`.
 
-## OG C# Code Layout
+## OG Code Layout (MockEtlFrameworkPython)
 
 ```
-{OG_CS_ROOT}/
-├── JobExecutor/Jobs/              # Job conf JSON files
-├── ExternalModules/               # C# external module .cs files
-├── Lib/                           # Framework library code
-├── SQL/                           # SQL files
-└── Program.cs                     # Entry point
+/workspace/MockEtlFrameworkPython/
+├── JobExecutor/Jobs/              # OG job conf JSON files
+├── src/etl/modules/externals/     # OG external modules (Python)
+├── src/etl/modules/               # Framework module implementations
+├── RE/Jobs/                       # RE job confs (deployed by publisher)
+├── RE/externals/                  # RE external modules (deployed by publisher)
+├── Output/curated/                # OG output (read-only)
+├── Output/re-curated/             # RE output (produced by host)
+└── Documentation/                 # Framework docs
 ```
+
+### External Module Interface
+
+External modules are Python files with two requirements:
+1. A function: `def execute(shared_state: dict[str, object]) -> dict[str, object]`
+2. A `register()` call at module scope: `register("ExternalModules.ClassName", execute)`
+
+Discovery is directory-based — the framework globs `*.py` from both
+`src/etl/modules/externals/` and `RE/externals/`, loads each file, and the
+`register()` call populates an internal registry keyed by `typeName`.
+
+The `assemblyPath` field in job confs is vestigial (from the original C#
+framework) and is ignored by the Python framework. Agents should not
+reference it or treat it as meaningful.
 
 ## Rejection Handling
 

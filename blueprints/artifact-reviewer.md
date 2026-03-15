@@ -26,7 +26,7 @@ and logically.
 - `{job_dir}/artifacts/code/{module_name}_re.py` (if applicable)
 
 **Source material:**
-- Python framework docs at `{FW_DOCS}/`
+- Python framework docs at `/workspace/MockEtlFrameworkPython/Documentation/`
 
 ## Writes
 

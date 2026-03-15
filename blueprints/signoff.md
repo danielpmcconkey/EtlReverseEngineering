@@ -30,7 +30,7 @@ Last stop before the job is declared done.
 - `{job_dir}/artifacts/proofmark-results.md`
 
 **Source material:**
-- OG output at `{ETL_ROOT}/Output/curated/` — for spot-checks
+- OG output at `/workspace/MockEtlFrameworkPython/Output/curated/` — for spot-checks
 - RE output — for spot-checks
 
 ## Writes

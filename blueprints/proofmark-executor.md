@@ -28,8 +28,8 @@ service processes them. You do NOT run Proofmark locally.
 - `{job_dir}/artifacts/proofmark-config.yaml`
 
 **Source material:**
-- OG output at `{ETL_ROOT}/Output/curated/{job_name}/` (read-only Docker mount)
-- RE output at `{ETL_ROOT}/Output/re-curated/{job_name}/` (produced by job-executor via host)
+- OG output at `/workspace/MockEtlFrameworkPython/Output/curated/{job_name}/` (read-only Docker mount)
+- RE output at `/workspace/MockEtlFrameworkPython/Output/re-curated/{job_name}/` (produced by job-executor via host)
 
 ## Writes
 

@@ -37,7 +37,7 @@ When invoked as WriteFsdResponse, rewrite incorporating reviewer feedback.
 - `{job_dir}/artifacts/bdd_specs/bdd.md`
 
 **Source material:**
-- Python framework docs at `{FW_DOCS}/` — module reference
+- Python framework docs at `/workspace/MockEtlFrameworkPython/Documentation/` — module reference
 - OG job conf — via paths in og-sources.md
 - OG external modules at `/workspace/MockEtlFrameworkPython/src/etl/modules/externals/` —
   treat these only as a reference for what output they produce, not as a design to copy
