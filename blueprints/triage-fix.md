@@ -104,6 +104,14 @@ Overwrite the existing file — don't create patches or diffs.
 
 - **Trust the RCA.** The root cause is identified. Your job is to fix it,
   not to re-diagnose it.
+- **Non-deterministic OG behavior means the RE code is correct.** If the
+  RCA identifies that the OG produces non-deterministic output (e.g.,
+  Postgres heap scan order, race conditions, first-seen-wins on unordered
+  data), that means the RE's deterministic implementation is working as
+  intended. Do NOT try to replicate the non-determinism in the RE — that
+  is not a valid fix. The only appropriate remediation is to relax
+  Proofmark's comparison rules for the affected columns (excluded columns,
+  fuzzy matching, or threshold adjustment).
 - **Minimal changes.** Fix the problem. Don't refactor, clean up, or improve
   things that aren't broken.
 - **Write to artifacts, not deployed paths.** The pipeline handles deployment.

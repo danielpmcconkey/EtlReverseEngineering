@@ -73,11 +73,11 @@ findings usefully. If you can see that a root cause maps to a known
 capability, mention it in your detail document.
 
 **Proofmark config options** (see `/workspace/proofmark/Documentation/configuration.md`):
-- **Excluded columns**: Remove columns from comparison entirely. Useful when a
+- **Excluded columns**: Remove columns from comparison entirely. Use when a
   column is non-deterministic and no ordering fix can make it reproducible.
 - **Fuzzy matching**: Compare numeric columns with a tolerance (absolute or
-  relative). Useful for rounding differences, float precision, etc.
-- **Threshold**: Set a minimum match percentage below 100%. Useful when a
+  relative). Use for rounding differences, float precision, etc.
+- **Threshold**: Set a minimum match percentage below 100%. Use when a
   small number of rows have acceptable variance.
 
 **RE code / config changes** the Fix agent can make:
