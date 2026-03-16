@@ -29,8 +29,7 @@ HAPPY_PATH: list[str] = [
     "Publish",                  # 18 - Build
     "ExecuteJobRuns",           # 19 - Validate
     "ExecuteProofmark",         # 20 - Validate
-    "FinalSignOff",             # 21 - Validate
-    "FBR_EvidenceAudit",        # 22 - Validate (terminal gate)
+    "FBR_EvidenceAudit",        # 21 - Validate (terminal gate)
 ]
 
 # Node type classification: REVIEW for review/gate nodes, WORK for everything else.
@@ -42,7 +41,6 @@ _REVIEW_NODES: set[str] = {
     "ReviewProofmarkConfig",
     "ReviewUnitTests",
     "FBR_EvidenceAudit",
-    "FinalSignOff",
 }
 
 # Review routing: review_node -> (response_node, rewind_target).
@@ -93,15 +91,21 @@ for _review_node, (_response_node, _rewind_target) in REVIEW_ROUTING.items():
 # FBR_EvidenceAudit (terminal gate) is NOT routed through FBR_ROUTING — it stays.
 FBR_ROUTING: dict[str, tuple[str, str]] = {}
 
-# FBR_EvidenceAudit: terminal gate. APPROVED advances, FAIL/REJECTED → DEAD_LETTER.
-# Not in FBR_ROUTING — no response node, no rewind, no retry.
-# CONDITIONAL is not a valid outcome for this gate (blueprint enforces APPROVED/REJECTED only).
+# FBR_EvidenceAudit: APPROVED → COMPLETE, REJECTED → DEAD_LETTER.
+# CONDITIONAL → PatFix: Pat identified fixable documentation/test drift.
+# PatFix updates FSD, syncs artifacts, rebuilds & runs UTs. On SUCCESS → COMPLETE
+# (no re-review — Pat's conditions are specific and mechanical).
+# PatFix FAIL → DEAD_LETTER (if Pat's conditions can't be resolved, it's a human problem).
+TRANSITION_TABLE[("FBR_EvidenceAudit", Outcome.CONDITIONAL)] = "PatFix"
+TRANSITION_TABLE[("PatFix", Outcome.SUCCESS)] = "COMPLETE"
+NODE_TYPES["PatFix"] = NodeType.WORK
 
 # Nodes where FAIL immediately triggers DEAD_LETTER (no retry count check).
 # FBR_EvidenceAudit is a terminal gate — if traceability is broken, the whole
 # RE attempt is suspect. No rewind, no retry. Human triages from the findings.
 TERMINAL_FAIL_NODES: set[str] = {
     "FBR_EvidenceAudit",
+    "PatFix",
 }
 
 # Triage: single autonomous node. Replaces the old 7-node diagnostic pipeline (T1-T7).

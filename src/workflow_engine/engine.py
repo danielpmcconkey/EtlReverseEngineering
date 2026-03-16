@@ -33,6 +33,7 @@ class Engine:
     def __init__(self, config: EngineConfig) -> None:
         self._config = config
         self._handler = StepHandler(config)
+        self._pool: WorkerPool | None = None
         self._log = structlog.get_logger()
 
         errors = validate_transition_table()
@@ -46,12 +47,12 @@ class Engine:
 
         job_ids = ingest_manifest(manifest_path)
 
-        pool = WorkerPool(
+        self._pool = WorkerPool(
             handler=self._handler,
             n_workers=self._config.n_jobs,  # repurpose n_jobs as worker count
             poll_interval=0.02,
         )
-        pool.run_until_drained(timeout=timeout)
+        self._pool.run_until_drained(timeout=timeout)
 
         # Collect final states
         results: list[JobState] = []
@@ -61,3 +62,9 @@ class Engine:
                 results.append(state)
 
         return results
+
+    def stop(self) -> None:
+        """Stop the worker pool if running."""
+        if self._pool is not None:
+            self._pool.stop(timeout=10.0)
+            self._pool = None

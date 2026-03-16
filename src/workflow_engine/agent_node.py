@@ -123,6 +123,7 @@ class AgentNode(Node):
                 text=True,
                 timeout=1800,
                 cwd=str(self.jobs_dir.parent),
+                start_new_session=True,
             )
         except subprocess.TimeoutExpired:
             log.error("agent_timeout", node=self.node_name, job_id=job.job_id)

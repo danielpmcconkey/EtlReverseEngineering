@@ -80,7 +80,6 @@ _NODE_DESCRIPTIONS: dict[str, str] = {
     "FBR_EvidenceAudit": "evidence-auditor: Mechanical verification of all traceability links and citations",
     "ExecuteJobRuns": "job-executor: Executes the ETL job against real data",
     "ExecuteProofmark": "proofmark-executor: Runs proofmark comparison against job output",
-    "FinalSignOff": "signoff: Final human-equivalent sign-off on the completed job",
     # Triage: single autonomous node, replaces old T1-T7 pipeline.
     "Triage": "triage-orchestrator: Orchestrates root cause analysis, fix, and reset for failed jobs",
 }
@@ -94,6 +93,7 @@ _RESPONSE_NODE_DESCRIPTIONS: dict[str, str] = {
     "BuildJobArtifactsResponse": "builder: Revises job artifacts based on reviewer feedback",
     "BuildProofmarkResponse":    "proofmark-builder: Revises proofmark config based on reviewer feedback",
     "BuildUnitTestsResponse":    "test-writer: Revises unit tests based on reviewer feedback",
+    "PatFix":                    "pat-fix: Resolves Pat's conditional findings — updates FSD, syncs artifacts, rebuilds and runs unit tests",
 }
 
 
@@ -107,7 +107,6 @@ def create_node_registry(rng: random.Random | None = None) -> dict[str, Node]:
     # WORK nodes that have FAILURE edges (can meaningfully fail with RNG).
     _FAILABLE_WORK_NODES = {"ExecuteProofmark"} | set(_RESPONSE_NODE_DESCRIPTIONS)
     # REVIEW nodes that have CONDITIONAL/FAIL edges (can meaningfully fail with RNG).
-    # FinalSignOff is a review node but has no failure edges -- always deterministic.
     _FAILABLE_REVIEW_NODES = set(REVIEW_ROUTING) | set(FBR_ROUTING)
 
     registry: dict[str, Node] = {}
@@ -187,7 +186,6 @@ MODEL_MAP: dict[str, str] = {
     # Build — code-vs-spec judgment
     "ReviewJobArtifacts":        "opus",
     # Validate — judgment, Pat
-    "FinalSignOff":              "opus",
     "FBR_EvidenceAudit":         "opus",
     # Mechanical — file copy, queue+poll (haiku retired, sonnet default is fine)
     # Triage — orchestrator dispatches its own sub-agents with their own models.

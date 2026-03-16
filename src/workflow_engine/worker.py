@@ -62,7 +62,7 @@ class WorkerPool:
                 target=self._worker_loop,
                 args=(i,),
                 name=f"re-worker-{i}",
-                daemon=True,
+                daemon=False,
             )
             self._threads.append(t)
             t.start()

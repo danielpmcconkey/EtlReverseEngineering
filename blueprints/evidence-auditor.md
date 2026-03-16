@@ -1,9 +1,9 @@
 # Blueprint: evidence-auditor
 
 **Persona:** Pat
-**Stage:** Validate (final node — runs after FinalSignOff, before COMPLETE)
+**Stage:** Validate (final node — runs after ExecuteProofmark, before COMPLETE)
 **States:** FBR_EvidenceAudit
-**Outcome type:** APPROVED / REJECTED (terminal gate — REJECTED → DEAD_LETTER, no retry)
+**Outcome type:** APPROVED / CONDITIONAL / REJECTED
 
 ---
 
@@ -67,7 +67,6 @@ needs to be justified with evidence so strong that Pat can't poke a hole in it.
 - `{job_dir}/artifacts/proofmark-results.md`
 - `{job_dir}/artifacts/tests/test_{job_name}.py`
 - `{job_dir}/artifacts/tests/test-plan.md`
-- `{job_dir}/artifacts/final-signoff.md`
 
 **Process artifacts:** ALL process JSONs in `{job_dir}/process/`
 
@@ -177,7 +176,7 @@ disappear is not fixing the problem.
   rebuild/rewind evidence after the final ExecuteProofmark), that's a
   finding. Version drift means untested code.
 - Verify unit test results show 100% pass rate.
-- Verify the FinalSignOff artifact exists and its verdict is COMPLETE.
+- Verify no version drift in Proofmark results (all dates on same code version).
 
 ### Audit 7: Cross-Artifact Consistency
 
@@ -192,11 +191,25 @@ disappear is not fixing the problem.
 
 Count every finding. Classify each as:
 - **FATAL:** Fabricated evidence, circular reasoning, missing coverage,
-  unjustified non-strict columns, version drift. Any one of these = REJECTED.
+  unjustified non-strict columns, version drift. Any one of these blocks
+  APPROVED.
 - **CONCERN:** Minor inconsistencies that don't undermine the evidence
   chain but should be noted (e.g., a typo in a citation that still points
-  to the right general area). Zero tolerance in this gate means even
-  concerns result in REJECTED, but Pat distinguishes severity in the report.
+  to the right general area).
+
+### Verdict Decision
+
+- **APPROVED:** Zero fatal findings, zero or minor concerns only. Evidence
+  chain is airtight.
+- **CONDITIONAL:** Fatal findings exist BUT the Proofmark results are clean
+  (output is correct) AND all findings are documentation/test drift that
+  can be mechanically fixed (FSD doesn't match deployed code, tests validate
+  dead code, artifact jobconf is stale, anti-pattern docs are outdated).
+  The `conditions` array MUST list every specific fix required. A downstream
+  agent will execute these fixes — be precise.
+- **REJECTED:** Fatal findings that indicate the output itself may be wrong,
+  OR evidence of actual fabrication (not just drift), OR findings that
+  require human judgment to resolve. REJECTED → DEAD_LETTER, no retry.
 
 ---
 
@@ -207,9 +220,9 @@ Count every finding. Classify each as:
 - **Body:**
 ```json
 {
-  "outcome": "APPROVED|REJECTED",
+  "outcome": "APPROVED|CONDITIONAL|REJECTED",
   "reason": "...",
-  "conditions": [],
+  "conditions": ["(CONDITIONAL only) specific fix instructions for each finding"],
   "auditor": "Pat",
   "brd_requirements_total": 0,
   "brd_requirements_traced_to_og": 0,
@@ -236,7 +249,7 @@ Count every finding. Classify each as:
   "cross_artifact_spot_checks_failed": 0,
   "fatal_findings": [],
   "concerns": [],
-  "verdict": "APPROVED or REJECTED",
+  "verdict": "APPROVED or CONDITIONAL or REJECTED",
   "pat_summary": "Free text — Pat's overall assessment in his own words"
 }
 ```
@@ -256,11 +269,16 @@ Count every finding. Classify each as:
 ```
 or
 ```json
-{"outcome": "REJECTED", "reason": "3 fatal findings: BRD-007 cites OgLoader.cs:89 but line 89 is a comment, 2 non-strict Proofmark columns have no justification, effective dates span 2 code versions", "conditions": []}
+{"outcome": "CONDITIONAL", "reason": "4 fatal findings, all documentation/test drift — Proofmark 31/31 clean", "conditions": ["Update FSD: remove External module from module sequence, update FSD-003 SQL to match deployed CTE", "Sync artifact jobconf with deployed version (add columnTypes)", "Rebuild unit tests against deployed SQL, not dead FSD-003 SQL", "Update AP-001 remediation status to fully remediated"]}
+```
+or
+```json
+{"outcome": "REJECTED", "reason": "Output may be incorrect: Proofmark fuzzy columns mask a 15% numeric divergence with no OG code justification", "conditions": []}
 ```
 
-**There is no CONDITIONAL for this gate.** REJECTED → DEAD_LETTER. Pat's full
-findings are in the process artifact and the audit report for human triage.
+**CONDITIONAL** triggers an automated fix agent that resolves the conditions
+and auto-completes. Pat's conditions must be specific enough for mechanical
+execution. **REJECTED** → DEAD_LETTER. No retry. Human triages.
 
 ---
 

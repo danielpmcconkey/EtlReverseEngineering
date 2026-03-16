@@ -114,6 +114,11 @@ Overwrite the existing file — don't create patches or diffs.
   fuzzy matching, or threshold adjustment).
 - **Minimal changes.** Fix the problem. Don't refactor, clean up, or improve
   things that aren't broken.
+- **Update everything your changes invalidate.** If you change the jobconf
+  or external module, the FSD now describes an architecture that doesn't
+  exist — update it. If you change the SQL, the unit tests now test dead
+  code — rebuild them. "Minimal" means don't fix things that aren't broken,
+  not "leave stale artifacts behind."
 - **Write to artifacts, not deployed paths.** The pipeline handles deployment.
 - **Be specific in fix-detail.md.** The Reset agent needs to know exactly
   which files changed.

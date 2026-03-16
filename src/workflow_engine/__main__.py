@@ -4,7 +4,11 @@ Usage: python -m workflow_engine manifest.json
 """
 
 import argparse
+import os
+import signal
+import sys
 
+from workflow_engine.db import close_pool
 from workflow_engine.engine import Engine
 from workflow_engine.models import EngineConfig
 
@@ -74,9 +78,28 @@ def main() -> None:
         etl_end_date=args.etl_end_date,
     )
     engine = Engine(config)
-    results = engine.run(args.manifest_path, timeout=args.timeout)
-    completed = sum(1 for j in results if j.status == "COMPLETE")
-    print(f"\n{completed}/{len(results)} jobs completed successfully")
+
+    # Register shutdown handler — kill child process trees, stop workers, restore terminal.
+    def _shutdown(signum: int, frame: object) -> None:
+        sig_name = signal.Signals(signum).name
+        print(f"\n[engine] {sig_name} received, shutting down workers...", file=sys.stderr)
+        engine.stop()
+        close_pool()
+        # Restore terminal sanity in case a claude subprocess trashed it.
+        os.system("stty sane 2>/dev/null")
+        sys.exit(128 + signum)
+
+    signal.signal(signal.SIGINT, _shutdown)
+    signal.signal(signal.SIGTERM, _shutdown)
+
+    try:
+        results = engine.run(args.manifest_path, timeout=args.timeout)
+        completed = sum(1 for j in results if j.status == "COMPLETE")
+        print(f"\n{completed}/{len(results)} jobs completed successfully")
+    finally:
+        engine.stop()
+        close_pool()
+        os.system("stty sane 2>/dev/null")
 
 
 if __name__ == "__main__":
