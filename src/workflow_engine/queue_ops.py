@@ -14,6 +14,7 @@ import structlog
 
 from workflow_engine.db import (
     enqueue_task,
+    get_pool,
     load_job_state,
     save_job_state,
 )
@@ -55,6 +56,24 @@ def ingest_manifest(manifest_path: str | Path) -> list[str]:
                 continue
 
             # Resume: trust that state has been set to the right node externally.
+            # Skip if a task is already pending/claimed (manual queue insertion).
+            pool = get_pool()
+            with pool.connection() as conn:
+                row = conn.execute(
+                    "SELECT id FROM control.re_task_queue "
+                    "WHERE job_id = %s AND status IN ('pending', 'claimed') "
+                    "LIMIT 1",
+                    (job_id,),
+                ).fetchone()
+            if row is not None:
+                log.info(
+                    "ingest_resume_already_queued",
+                    job_id=job_id,
+                    node=existing.current_node,
+                )
+                job_ids.append(job_id)
+                continue
+
             log.info(
                 "ingest_resume",
                 job_id=job_id,
