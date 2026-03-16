@@ -69,22 +69,47 @@ into the database and read results back.
 5. **Deploy the proofmark config** alongside the job conf:
    Copy `{job_dir}/artifacts/proofmark-config.yaml`
    → `/workspace/MockEtlFrameworkPython/RE/Jobs/{job_name}/proofmark-config.yaml`
-6. For each date that produced output, insert a comparison task:
+6. **Read the job conf** (`{job_dir}/artifacts/code/jobconf.json`) to find the
+   file-writer module. Extract `jobDirName`, `outputTableDirName`, and `fileName`
+   from that module. You need these to construct correct output paths.
+7. For each date that produced output, insert a comparison task. The path
+   structure depends on the writer type:
+
+   **CsvFileWriter** — path points to a file:
    ```sql
    INSERT INTO control.proofmark_test_queue
      (config_path, lhs_path, rhs_path, job_key, date_key)
    VALUES (
      '{ETL_ROOT}/RE/Jobs/{job_name}/proofmark-config.yaml',
-     '{ETL_ROOT}/Output/curated/{job_name}/{output_table_name}/{date}/{output_table_name}.csv',
-     '{ETL_ROOT}/Output/re-curated/{job_name}/{output_table_name}/{date}/{output_table_name}.csv',
+     '{ETL_ROOT}/Output/curated/{jobDirName}/{outputTableDirName}/{date}/{fileName}',
+     '{ETL_ROOT}/Output/re-curated/{jobDirName}/{outputTableDirName}/{date}/{fileName}',
      '{job_name}_re',
      '{date}'
    );
    ```
+   `{fileName}` includes the `.csv` extension (e.g. `account_balance_snapshot.csv`).
+
+   **ParquetFileWriter** — path points to the **directory** containing part files:
+   ```sql
+   INSERT INTO control.proofmark_test_queue
+     (config_path, lhs_path, rhs_path, job_key, date_key)
+   VALUES (
+     '{ETL_ROOT}/RE/Jobs/{job_name}/proofmark-config.yaml',
+     '{ETL_ROOT}/Output/curated/{jobDirName}/{outputTableDirName}/{date}/{fileName}',
+     '{ETL_ROOT}/Output/re-curated/{jobDirName}/{outputTableDirName}/{date}/{fileName}',
+     '{job_name}_re',
+     '{date}'
+   );
+   ```
+   `{fileName}` has **no extension** — it is a directory name (e.g.
+   `wire_transfer_daily`). The Proofmark parquet reader expects a directory
+   and globs for `*.parquet` inside it. Do NOT append `.parquet` or point to
+   a specific part file.
+
    **Critical:** `{ETL_ROOT}` is a literal string token — do NOT resolve it.
    The host Proofmark service expands it at runtime from its own environment.
    Do NOT use absolute container paths — they mean nothing on the host.
-7. Poll for results until all tasks complete:
+8. Poll for results until all tasks complete:
    ```sql
    SELECT date_key, status, result, error_message
    FROM control.proofmark_test_queue
@@ -93,10 +118,10 @@ into the database and read results back.
    ORDER BY date_key;
    ```
    Wait until all rows are `Succeeded` or `Failed`.
-8. For succeeded tasks, read `result` (`PASS` or `FAIL`) and `result_json`.
-9. For failures: extract column-level mismatch details from `result_json`.
-10. Write consolidated results to product artifact.
-11. Return SUCCESS if all dates pass, FAIL if any fail.
+9. For succeeded tasks, read `result` (`PASS` or `FAIL`) and `result_json`.
+10. For failures: extract column-level mismatch details from `result_json`.
+11. Write consolidated results to product artifact.
+12. Return SUCCESS if all dates pass, FAIL if any fail.
 
 ## Database Connection
 
