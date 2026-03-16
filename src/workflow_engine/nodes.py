@@ -189,9 +189,7 @@ MODEL_MAP: dict[str, str] = {
     # Validate — judgment, Pat
     "FinalSignOff":              "opus",
     "FBR_EvidenceAudit":         "opus",
-    # Mechanical — file copy, queue+poll
-    "Publish":                   "haiku",
-    "ExecuteProofmark":          "haiku",
+    # Mechanical — file copy, queue+poll (haiku retired, sonnet default is fine)
     # Triage — orchestrator dispatches its own sub-agents with their own models.
     # Sonnet is fine for project-managing the phases.
 }

@@ -182,6 +182,45 @@ Pass these paths when dispatching agents so they know where to find materials.
 {"outcome": "SUCCESS", "reason": "Triage complete — fix applied, job requeued at ExecuteProofmark", "conditions": []}
 ```
 
+## How to Dispatch Sub-Agents
+
+You spawn sub-agents by invoking the Claude CLI via bash. Each sub-agent gets
+a blueprint (system prompt) and a task prompt (user message).
+
+**Blueprints directory:** `/workspace/EtlReverseEngineering/blueprints/`
+
+**Blueprint files:**
+- RCA: `triage-rca.md`
+- Fix: `triage-fix.md`
+- Reset: `triage-reset.md`
+
+**Invocation pattern:**
+
+```bash
+claude -p \
+  --append-system-prompt "$(cat /workspace/EtlReverseEngineering/blueprints/{blueprint-file})" \
+  --model sonnet \
+  --dangerously-skip-permissions \
+  "{your task prompt here — job_id, job_name, job_dir, reference paths, instructions}"
+```
+
+Use `--model opus` for the RCA agent (it needs deep analytical capability).
+Use `--model sonnet` for Fix and Reset agents.
+
+The task prompt you pass should include:
+- `job_id`, `job_name`, `job_dir`
+- The relevant paths from the Reference Map above
+- Any phase-specific instructions (e.g., "requeue" vs "dead-letter" for Reset)
+
+Wait for the sub-agent to complete before proceeding to the next phase. Read
+its output files to determine the next step.
+
+**Important:** Make sure the triage artifacts directory exists before
+dispatching agents:
+```bash
+mkdir -p {job_dir}/artifacts/triage
+```
+
 ## Constraints
 
 - **Keep your context lean.** You are a dispatcher. Read summaries, not details.
