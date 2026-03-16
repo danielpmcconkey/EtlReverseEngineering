@@ -4,14 +4,12 @@ import random
 
 from workflow_engine.models import JobState, Outcome
 from workflow_engine.nodes import (
-    DiagnosticStubNode,
     Node,
     StubReviewNode,
     StubWorkNode,
-    TriageRouterNode,
     create_node_registry,
 )
-from workflow_engine.transitions import HAPPY_PATH, NODE_TYPES
+from workflow_engine.transitions import AUTONOMOUS_NODES, HAPPY_PATH, NODE_TYPES
 
 
 class TestNodeABC:
@@ -72,6 +70,12 @@ class TestNodeRegistry:
         for node in HAPPY_PATH:
             assert node in registry, f"{node} missing from registry"
 
+    def test_registry_covers_autonomous_nodes(self) -> None:
+        """Registry has an entry for every AUTONOMOUS_NODES node."""
+        registry = create_node_registry(rng=None)
+        for node in AUTONOMOUS_NODES:
+            assert node in registry, f"{node} missing from registry"
+
     def test_rng_mode(self) -> None:
         """When seed is set, stubs produce varied outcomes across multiple calls."""
         rng = random.Random(42)
@@ -97,14 +101,14 @@ _EXPECTED_RESPONSE_NODES = {
 
 
 def test_response_nodes_exist() -> None:
-    """create_node_registry() returns entries for all 7 response nodes (RB-05)."""
+    """create_node_registry() returns entries for all 6 response nodes (RB-05)."""
     registry = create_node_registry(rng=None)
     for node_name in _EXPECTED_RESPONSE_NODES:
         assert node_name in registry, f"Response node {node_name} missing from registry"
 
 
 def test_response_nodes_are_work_type() -> None:
-    """All 7 response nodes are StubWorkNode instances, not StubReviewNode."""
+    """All 6 response nodes are StubWorkNode instances, not StubReviewNode."""
     registry = create_node_registry(rng=None)
     for node_name in _EXPECTED_RESPONSE_NODES:
         node = registry[node_name]
@@ -117,7 +121,7 @@ def test_response_nodes_are_work_type() -> None:
 
 
 def test_response_nodes_have_descriptions() -> None:
-    """All 7 response nodes have non-empty descriptions."""
+    """All 6 response nodes have non-empty descriptions."""
     registry = create_node_registry(rng=None)
     for node_name in _EXPECTED_RESPONSE_NODES:
         node = registry[node_name]
@@ -153,95 +157,40 @@ def test_response_nodes_rng_mode_returns_success_or_failure() -> None:
 
 
 def test_registry_total_size() -> None:
-    """Registry has 22 happy-path + 6 response + 7 triage = 35 nodes total."""
+    """Registry has 22 happy-path + 6 response + 1 autonomous (Triage) = 29 nodes total."""
     registry = create_node_registry(rng=None)
-    assert len(registry) == 35, f"Expected 35 nodes, got {len(registry)}"
+    assert len(registry) == 29, f"Expected 29 nodes, got {len(registry)}"
 
 
-class TestTriageNodes:
-    """Tests for triage node stubs and router (TR-02 through TR-06)."""
+class TestTriageNode:
+    """Tests for the single autonomous Triage node (session 24 redesign)."""
 
-    def test_t1_t2_context_gathering(self) -> None:
-        """TR-02: T1 and T2 are StubWorkNode instances, return SUCCESS."""
-        registry = create_node_registry()
-        for name in ("Triage_ProfileData", "Triage_AnalyzeOgFlow"):
-            node = registry[name]
-            assert isinstance(node, StubWorkNode), f"{name} should be StubWorkNode"
-            job = JobState(job_id="t1t2-test")
-            assert node.execute(job) == Outcome.SUCCESS
+    def test_triage_in_registry(self) -> None:
+        """Triage node exists in the registry."""
+        registry = create_node_registry(rng=None)
+        assert "Triage" in registry
 
-    def test_diagnostic_stubs_record_verdict(self) -> None:
-        """TR-03: T3-T6 return SUCCESS but store verdict in job.triage_results."""
-        check_nodes = [
+    def test_triage_is_stub_work_node(self) -> None:
+        """Triage is a StubWorkNode (returns SUCCESS in stub mode)."""
+        registry = create_node_registry(rng=None)
+        node = registry["Triage"]
+        assert isinstance(node, StubWorkNode)
+
+    def test_triage_deterministic_returns_success(self) -> None:
+        """In deterministic mode, Triage returns SUCCESS."""
+        registry = create_node_registry(rng=None)
+        node = registry["Triage"]
+        job = JobState(job_id="triage-test")
+        assert node.execute(job) == Outcome.SUCCESS
+
+    def test_old_triage_nodes_not_in_registry(self) -> None:
+        """Old T1-T7 nodes are not in the registry."""
+        registry = create_node_registry(rng=None)
+        old_nodes = [
+            "Triage_ProfileData", "Triage_AnalyzeOgFlow",
             "Triage_CheckBrd", "Triage_CheckFsd",
             "Triage_CheckCode", "Triage_CheckProofmark",
+            "Triage_Route",
         ]
-        registry = create_node_registry()
-        for name in check_nodes:
-            node = registry[name]
-            assert isinstance(node, DiagnosticStubNode), f"{name} should be DiagnosticStubNode"
-            job = JobState(job_id="diag-test")
-            result = node.execute(job)
-            assert result == Outcome.SUCCESS
-            assert name in job.triage_results
-
-    def test_diagnostic_stubs_deterministic_clean(self) -> None:
-        """Without RNG, T3-T6 store 'clean'."""
-        for name in ("Triage_CheckBrd", "Triage_CheckFsd", "Triage_CheckCode", "Triage_CheckProofmark"):
-            node = DiagnosticStubNode(name, "test", rng=None)
-            job = JobState(job_id="clean-test")
-            node.execute(job)
-            assert job.triage_results[name] == "clean"
-
-    def test_diagnostic_stubs_rng_varies(self) -> None:
-        """With seeded RNG, T3-T6 produce both 'clean' and 'fault' across calls."""
-        rng = random.Random(42)
-        node = DiagnosticStubNode("Triage_CheckBrd", "test", rng=rng)
-        verdicts = set()
-        for i in range(20):
-            job = JobState(job_id=f"rng-test-{i}")
-            node.execute(job)
-            verdicts.add(job.triage_results["Triage_CheckBrd"])
-        assert verdicts == {"clean", "fault"}, f"Expected both clean and fault, got {verdicts}"
-
-    def test_triage_router_earliest_fault(self) -> None:
-        """TR-04: T3=fault, T5=fault -> routes to WriteBrd (earliest)."""
-        node = TriageRouterNode()
-        job = JobState(job_id="router-test")
-        job.triage_results = {
-            "Triage_CheckBrd": "fault",
-            "Triage_CheckFsd": "clean",
-            "Triage_CheckCode": "fault",
-            "Triage_CheckProofmark": "clean",
-        }
-        result = node.execute(job)
-        assert result == Outcome.TRIAGE_ROUTE
-        assert job.triage_rewind_target == "WriteBrd"
-
-    def test_triage_router_no_faults(self) -> None:
-        """TR-06: All clean -> DEAD_LETTER."""
-        node = TriageRouterNode()
-        job = JobState(job_id="no-fault-test")
-        job.triage_results = {
-            "Triage_CheckBrd": "clean",
-            "Triage_CheckFsd": "clean",
-            "Triage_CheckCode": "clean",
-            "Triage_CheckProofmark": "clean",
-        }
-        result = node.execute(job)
-        assert result == Outcome.TRIAGE_ROUTE
-        assert job.triage_rewind_target == "DEAD_LETTER"
-
-    def test_triage_router_single_fault_t6(self) -> None:
-        """Only T6=fault -> routes to BuildProofmarkConfig."""
-        node = TriageRouterNode()
-        job = JobState(job_id="t6-fault-test")
-        job.triage_results = {
-            "Triage_CheckBrd": "clean",
-            "Triage_CheckFsd": "clean",
-            "Triage_CheckCode": "clean",
-            "Triage_CheckProofmark": "fault",
-        }
-        result = node.execute(job)
-        assert result == Outcome.TRIAGE_ROUTE
-        assert job.triage_rewind_target == "BuildProofmarkConfig"
+        for node in old_nodes:
+            assert node not in registry, f"Old node {node} still in registry"

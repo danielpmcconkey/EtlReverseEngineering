@@ -1,4 +1,4 @@
-"""Transition table and node classification for the workflow state machine.
+"""Transition table and node classification for the Ogre workflow state machine.
 
 Provides: TRANSITION_TABLE, HAPPY_PATH, NODE_TYPES, validate_transition_table.
 """
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from workflow_engine.models import NodeType, Outcome
 
-# All 28 happy-path nodes in execution order.
+# All happy-path nodes in execution order.
 HAPPY_PATH: list[str] = [
     "LocateOgSourceFiles",      # 1  - Plan
     "InventoryOutputs",         # 2  - Plan
@@ -28,9 +28,9 @@ HAPPY_PATH: list[str] = [
     "ExecuteUnitTests",         # 17 - Build
     "Publish",                  # 18 - Build
     "ExecuteJobRuns",           # 19 - Validate
-    "ExecuteProofmark",         # 26 - Validate
-    "FinalSignOff",             # 27 - Validate
-    "FBR_EvidenceAudit",        # 28 - Validate (terminal gate)
+    "ExecuteProofmark",         # 20 - Validate
+    "FinalSignOff",             # 21 - Validate
+    "FBR_EvidenceAudit",        # 22 - Validate (terminal gate)
 ]
 
 # Node type classification: REVIEW for review/gate nodes, WORK for everything else.
@@ -97,11 +97,6 @@ FBR_ROUTING: dict[str, tuple[str, str]] = {}
 # Not in FBR_ROUTING — no response node, no rewind, no retry.
 # CONDITIONAL is not a valid outcome for this gate (blueprint enforces APPROVED/REJECTED only).
 
-# Executor failure routing: ExecuteUnitTests and ExecuteJobRuns FAIL → DEAD_LETTER.
-# These agents have a built-in 3-attempt leash; if they return FAIL, it's beyond
-# autonomous repair. No orchestrator retry.
-
-# Nodes where FAIL immediately triggers DEAD_LETTER (no retry count check).
 # Nodes where FAIL immediately triggers DEAD_LETTER (no retry count check).
 # FBR_EvidenceAudit is a terminal gate — if traceability is broken, the whole
 # RE attempt is suspect. No rewind, no retry. Human triages from the findings.
@@ -109,39 +104,22 @@ TERMINAL_FAIL_NODES: set[str] = {
     "FBR_EvidenceAudit",
 }
 
-# Triage pipeline: 7-step diagnostic sub-pipeline entered on ExecuteProofmark FAILURE.
-TRIAGE_NODES: list[str] = [
-    "Triage_ProfileData",       # T1 - context gathering
-    "Triage_AnalyzeOgFlow",     # T2 - context gathering
-    "Triage_CheckBrd",          # T3 - diagnostic
-    "Triage_CheckFsd",          # T4 - diagnostic
-    "Triage_CheckCode",         # T5 - diagnostic
-    "Triage_CheckProofmark",    # T6 - diagnostic
-    "Triage_Route",             # T7 - router (returns TRIAGE_ROUTE, engine handles directly)
-]
-
-# All 7 triage nodes are WORK type.
-for _triage_node in TRIAGE_NODES:
-    NODE_TYPES[_triage_node] = NodeType.WORK
+# Triage: single autonomous node. Replaces the old 7-node diagnostic pipeline (T1-T7).
+# The triage orchestrator manages its own sub-agents (RCA, Fix, Reset) and directly
+# manipulates job state in the database. The engine fires it and walks away.
+# See AtcStrategy/POC6/BDsNotes/ for the redesign rationale (session 24).
+AUTONOMOUS_NODES: set[str] = {"Triage"}
+NODE_TYPES["Triage"] = NodeType.WORK
 
 # ExecuteProofmark FAILURE enters triage.
-TRANSITION_TABLE[("ExecuteProofmark", Outcome.FAILURE)] = "Triage_ProfileData"
+TRANSITION_TABLE[("ExecuteProofmark", Outcome.FAILURE)] = "Triage"
 
-# T1-T6 SUCCESS advance to next triage node.
-for _i in range(len(TRIAGE_NODES) - 1):
-    TRANSITION_TABLE[(TRIAGE_NODES[_i], Outcome.SUCCESS)] = TRIAGE_NODES[_i + 1]
-
-# Note: Triage_Route has NO TRANSITION_TABLE entry -- engine handles TRIAGE_ROUTE directly.
-
-
-# Work-node self-retry on FAIL: any WORK node (happy-path, triage, or response) that
+# Work-node self-retry on FAIL: any WORK node (happy-path or response) that
 # doesn't already have a (node, FAIL) edge gets a self-retry transition.
-# TERMINAL_FAIL_NODES are excluded -- they go straight to DEAD_LETTER in
-# _resolve_outcome before the transition lookup ever fires.
+# TERMINAL_FAIL_NODES and AUTONOMOUS_NODES are excluded.
 _ALL_WORK_NODES = (
     [n for n in HAPPY_PATH if NODE_TYPES[n] == NodeType.WORK]
     + list(_RESPONSE_NODES)
-    + list(TRIAGE_NODES)
 )
 for _work_node in _ALL_WORK_NODES:
     if _work_node in TERMINAL_FAIL_NODES:

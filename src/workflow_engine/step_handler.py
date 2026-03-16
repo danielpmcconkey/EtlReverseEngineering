@@ -7,7 +7,6 @@ next node → save state → enqueue next (or mark terminal).
 
 from __future__ import annotations
 
-import json
 import random
 from pathlib import Path
 from typing import Any
@@ -24,6 +23,7 @@ from workflow_engine.db import (
 from workflow_engine.models import EngineConfig, JobState, Outcome
 from workflow_engine.nodes import create_agent_registry, create_node_registry
 from workflow_engine.transitions import (
+    AUTONOMOUS_NODES,
     FBR_ROUTING,
     HAPPY_PATH,
     REVIEW_ROUTING,
@@ -67,28 +67,25 @@ class StepHandler:
 
         job.current_node = node_name
 
-        # Clear triage_results on entry to Triage_ProfileData
-        if node_name == "Triage_ProfileData":
-            job.triage_results = {}
-
         # Execute the node
         node = self._registry[node_name]
         raw_outcome = node.execute(job)
-        outcome = self._resolve_outcome(job, node_name, raw_outcome)
 
-        # Hydrate triage_results from process artifact for triage check nodes.
-        # AgentNode writes verdict to disk but doesn't touch job.triage_results;
-        # the TriageRouterNode (T7) reads from job.triage_results to route.
-        if node_name.startswith("Triage_Check") and self._config.use_agents:
-            process_file = (
-                Path(self._config.jobs_dir) / job_id / "process" / f"{node_name}.json"
+        # Autonomous nodes manage their own state and transitions.
+        # The orchestrator (e.g. Triage) directly manipulates the DB via
+        # sub-agents. We must NOT save job state here — it would overwrite
+        # what the orchestrator's Reset agent already wrote.
+        if node_name in AUTONOMOUS_NODES:
+            log.info(
+                "autonomous_node_complete",
+                node=node_name,
+                job_id=job_id,
+                outcome=raw_outcome.name,
             )
-            if process_file.exists():
-                try:
-                    artifact = json.loads(process_file.read_text())
-                    job.triage_results[node_name] = artifact.get("verdict", "clean")
-                except (json.JSONDecodeError, OSError):
-                    job.triage_results[node_name] = "clean"
+            complete_task(task_id)
+            return
+
+        outcome = self._resolve_outcome(job, node_name, raw_outcome)
 
         # Handle terminal: DEAD_LETTER
         if job.status == "DEAD_LETTER":
@@ -101,44 +98,6 @@ class StepHandler:
             )
             save_job_state(job)
             complete_task(task_id)
-            return
-
-        # Handle TRIAGE_ROUTE (engine-level routing, no TRANSITION_TABLE entry)
-        if outcome == Outcome.TRIAGE_ROUTE:
-            rewind_target = job.triage_rewind_target
-            job.main_retry_count += 1
-            job.last_rejection_reason = f"Triage routed to {rewind_target}"
-
-            if (
-                rewind_target == "DEAD_LETTER"
-                or job.main_retry_count >= self._config.max_main_retries
-            ):
-                job.status = "DEAD_LETTER"
-                log.info(
-                    "dead_letter",
-                    node=node_name,
-                    outcome=outcome.name,
-                    main_retry=job.main_retry_count,
-                    last_rejection=job.last_rejection_reason,
-                )
-                save_job_state(job)
-                complete_task(task_id)
-                return
-
-            self._reset_downstream_conditionals(job, rewind_target)
-            log.info(
-                "transition",
-                node=node_name,
-                outcome=outcome.name,
-                next_node=rewind_target,
-                main_retry=job.main_retry_count,
-                conditional_counts=dict(job.conditional_counts),
-                last_rejection=job.last_rejection_reason,
-            )
-            job.current_node = rewind_target
-            save_job_state(job)
-            complete_task(task_id)
-            enqueue_task(job_id, rewind_target)
             return
 
         # Standard transition lookup

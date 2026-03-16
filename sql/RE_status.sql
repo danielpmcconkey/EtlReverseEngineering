@@ -1,9 +1,9 @@
--- started at 8:37
+
 
 with jobs as (
 	select 
 		job_id, 
-		case when status = 'COMPLETE' then '10 - COMPLETE'  when status = 'RUNNING' then '01 -RUNNING' end as  status,
+		case when status = 'COMPLETE' then '10 - COMPLETE'  when status = 'RUNNING' then '01 -RUNNING' else status end as  status,
 		conditional_counts
 	from control.re_job_state
 	where job_id not like 'val-%'

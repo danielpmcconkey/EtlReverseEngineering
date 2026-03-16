@@ -2,11 +2,11 @@
 
 from workflow_engine.models import NodeType, Outcome
 from workflow_engine.transitions import (
+    AUTONOMOUS_NODES,
     FBR_ROUTING,
     HAPPY_PATH,
     NODE_TYPES,
     REVIEW_ROUTING,
-    TRIAGE_NODES,
     TRANSITION_TABLE,
     validate_transition_table,
 )
@@ -181,34 +181,41 @@ class TestFBRRemoved:
             )
 
 
-class TestTriage:
-    """Tests for triage pipeline wiring (TR-01 through TR-03)."""
+class TestTriageRedesign:
+    """Tests for the Ogre triage redesign (session 24).
+
+    Old 7-node pipeline (T1-T7) replaced with single autonomous Triage node.
+    """
 
     def test_proofmark_failure_enters_triage(self) -> None:
-        """ExecuteProofmark FAILURE routes to Triage_ProfileData."""
+        """ExecuteProofmark FAILURE routes to Triage (single node)."""
         key = ("ExecuteProofmark", Outcome.FAILURE)
         assert key in TRANSITION_TABLE
-        assert TRANSITION_TABLE[key] == "Triage_ProfileData"
+        assert TRANSITION_TABLE[key] == "Triage"
 
-    def test_triage_advance_edges(self) -> None:
-        """T1-T6 SUCCESS edges advance to next triage node."""
-        for i in range(6):
-            key = (TRIAGE_NODES[i], Outcome.SUCCESS)
-            assert key in TRANSITION_TABLE, f"Missing SUCCESS edge for {TRIAGE_NODES[i]}"
-            assert TRANSITION_TABLE[key] == TRIAGE_NODES[i + 1]
+    def test_triage_is_autonomous(self) -> None:
+        """Triage is in AUTONOMOUS_NODES — engine fires it and walks away."""
+        assert "Triage" in AUTONOMOUS_NODES
 
-    def test_triage_route_no_table_entry(self) -> None:
-        """Triage_Route TRIAGE_ROUTE is NOT in TRANSITION_TABLE (engine handles it)."""
-        key = ("Triage_Route", Outcome.TRIAGE_ROUTE)
-        assert key not in TRANSITION_TABLE
+    def test_triage_is_work_type(self) -> None:
+        """Triage is classified as NodeType.WORK."""
+        assert "Triage" in NODE_TYPES
+        assert NODE_TYPES["Triage"] == NodeType.WORK
 
-    def test_triage_proofmark_failures_placeholder_removed(self) -> None:
-        """TriageProofmarkFailures placeholder is retired."""
-        key = ("TriageProofmarkFailures", Outcome.SUCCESS)
-        assert key not in TRANSITION_TABLE
+    def test_triage_has_no_outbound_transitions(self) -> None:
+        """Triage is a dead end — no (Triage, *) entries in TRANSITION_TABLE."""
+        triage_keys = [k for k in TRANSITION_TABLE if k[0] == "Triage"]
+        assert triage_keys == [], f"Triage should have no outbound transitions, found: {triage_keys}"
 
-    def test_triage_nodes_in_node_types(self) -> None:
-        """All 7 triage nodes have NodeType.WORK in NODE_TYPES."""
-        for node in TRIAGE_NODES:
-            assert node in NODE_TYPES, f"{node} not in NODE_TYPES"
-            assert NODE_TYPES[node] == NodeType.WORK, f"{node} should be WORK"
+    def test_old_triage_nodes_removed(self) -> None:
+        """Old T1-T7 nodes are not in NODE_TYPES or TRANSITION_TABLE."""
+        old_nodes = [
+            "Triage_ProfileData", "Triage_AnalyzeOgFlow",
+            "Triage_CheckBrd", "Triage_CheckFsd",
+            "Triage_CheckCode", "Triage_CheckProofmark",
+            "Triage_Route",
+        ]
+        for node in old_nodes:
+            assert node not in NODE_TYPES, f"Old node {node} still in NODE_TYPES"
+            for key in TRANSITION_TABLE:
+                assert key[0] != node, f"Old node {node} still has transitions"

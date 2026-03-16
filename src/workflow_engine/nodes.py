@@ -1,4 +1,4 @@
-"""Node abstractions and stub implementations for the workflow engine.
+"""Node abstractions and stub implementations for the Ogre workflow engine.
 
 Provides: Node ABC, StubWorkNode, StubReviewNode, create_node_registry,
 create_agent_registry.
@@ -11,7 +11,13 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 from workflow_engine.models import JobState, NodeType, Outcome
-from workflow_engine.transitions import FBR_ROUTING, HAPPY_PATH, NODE_TYPES, REVIEW_ROUTING, TRIAGE_NODES
+from workflow_engine.transitions import (
+    AUTONOMOUS_NODES,
+    FBR_ROUTING,
+    HAPPY_PATH,
+    NODE_TYPES,
+    REVIEW_ROUTING,
+)
 
 
 class Node(ABC):
@@ -51,43 +57,6 @@ class StubReviewNode(Node):
         return self._rng.choice([Outcome.APPROVE, Outcome.CONDITIONAL, Outcome.FAIL])
 
 
-class DiagnosticStubNode(Node):
-    """Stub for triage diagnostic nodes (T3-T6). Always returns SUCCESS, stores verdict in job.triage_results."""
-
-    def __init__(self, node_name: str, description: str, *, rng: random.Random | None = None) -> None:
-        self.node_name = node_name
-        self.__doc__ = description
-        self._rng = rng
-
-    def execute(self, job: JobState) -> Outcome:
-        if self._rng is None:
-            verdict = "clean"
-        else:
-            verdict = self._rng.choice(["clean", "fault"])
-        job.triage_results[self.node_name] = verdict
-        return Outcome.SUCCESS
-
-
-class TriageRouterNode(Node):
-    """T7: Reads triage_results, sets triage_rewind_target to earliest fault, returns TRIAGE_ROUTE."""
-
-    # Priority order: T3 (BRD) before T4 (FSD) before T5 (code) before T6 (proofmark).
-    FAULT_ROUTING: list[tuple[str, str]] = [
-        ("Triage_CheckBrd",       "WriteBrd"),
-        ("Triage_CheckFsd",       "WriteFsd"),
-        ("Triage_CheckCode",      "BuildJobArtifacts"),
-        ("Triage_CheckProofmark", "BuildProofmarkConfig"),
-    ]
-
-    def execute(self, job: JobState) -> Outcome:
-        for check_node, rewind_target in self.FAULT_ROUTING:
-            if job.triage_results.get(check_node) == "fault":
-                job.triage_rewind_target = rewind_target
-                return Outcome.TRIAGE_ROUTE
-        job.triage_rewind_target = "DEAD_LETTER"
-        return Outcome.TRIAGE_ROUTE
-
-
 # Descriptions for each node, referencing stage and blueprint from the transition table.
 _NODE_DESCRIPTIONS: dict[str, str] = {
     "LocateOgSourceFiles": "og-locator: Locates original source files for the ETL job",
@@ -112,17 +81,8 @@ _NODE_DESCRIPTIONS: dict[str, str] = {
     "ExecuteJobRuns": "job-executor: Executes the ETL job against real data",
     "ExecuteProofmark": "proofmark-executor: Runs proofmark comparison against job output",
     "FinalSignOff": "signoff: Final human-equivalent sign-off on the completed job",
-}
-
-
-_TRIAGE_DESCRIPTIONS: dict[str, str] = {
-    "Triage_ProfileData":    "data-profiler: Profiles failed row data for triage context",
-    "Triage_AnalyzeOgFlow":  "og-flow-analyst: Analyzes original data flow for triage context",
-    "Triage_CheckBrd":       "triage-brd-checker: Checks BRD against data flow findings",
-    "Triage_CheckFsd":       "triage-fsd-checker: Checks FSD against data flow findings",
-    "Triage_CheckCode":      "triage-code-checker: Checks code artifacts against data flow findings",
-    "Triage_CheckProofmark": "triage-pm-checker: Checks proofmark config against data profile",
-    "Triage_Route":          "triage-router: Routes to earliest fault rewind target",
+    # Triage: single autonomous node, replaces old T1-T7 pipeline.
+    "Triage": "triage-orchestrator: Orchestrates root cause analysis, fix, and reset for failed jobs",
 }
 
 
@@ -138,7 +98,7 @@ _RESPONSE_NODE_DESCRIPTIONS: dict[str, str] = {
 
 
 def create_node_registry(rng: random.Random | None = None) -> dict[str, Node]:
-    """Create a stub node for every node in HAPPY_PATH plus all response nodes.
+    """Create a stub node for every node in HAPPY_PATH, autonomous nodes, and response nodes.
 
     Uses NODE_TYPES to pick StubWorkNode vs StubReviewNode for happy-path nodes.
     Response nodes are always StubWorkNode (they write/build, never review).
@@ -164,16 +124,9 @@ def create_node_registry(rng: random.Random | None = None) -> dict[str, Node]:
     for node_name, description in _RESPONSE_NODE_DESCRIPTIONS.items():
         registry[node_name] = StubWorkNode(node_name, description, rng=rng)
 
-    # Triage pipeline nodes.
-    # T1-T2: context gathering (StubWorkNode, deterministic without RNG)
-    for t_node in TRIAGE_NODES[:2]:
-        registry[t_node] = StubWorkNode(t_node, _TRIAGE_DESCRIPTIONS[t_node])
-    # T3-T6: diagnostic stubs
-    for t_node in TRIAGE_NODES[2:6]:
-        registry[t_node] = DiagnosticStubNode(t_node, _TRIAGE_DESCRIPTIONS[t_node], rng=rng)
-    # T7: router
-    registry["Triage_Route"] = TriageRouterNode()
-    registry["Triage_Route"].__doc__ = _TRIAGE_DESCRIPTIONS["Triage_Route"]
+    # Autonomous nodes (Triage). Always return SUCCESS in stub mode.
+    for node_name in AUTONOMOUS_NODES:
+        registry[node_name] = StubWorkNode(node_name, _NODE_DESCRIPTIONS[node_name])
 
     return registry
 
@@ -236,11 +189,11 @@ MODEL_MAP: dict[str, str] = {
     # Validate — judgment, Pat
     "FinalSignOff":              "opus",
     "FBR_EvidenceAudit":         "opus",
-    # Triage — OG code tracing
-    "Triage_AnalyzeOgFlow":      "opus",
     # Mechanical — file copy, queue+poll
     "Publish":                   "haiku",
     "ExecuteProofmark":          "haiku",
+    # Triage — orchestrator dispatches its own sub-agents with their own models.
+    # Sonnet is fine for project-managing the phases.
 }
 
 
@@ -255,21 +208,14 @@ def create_agent_registry(
     """Create an AgentNode for every node in the workflow.
 
     Each node maps to a blueprint file at blueprints_dir/{blueprint-name}.md.
-    Falls back to TriageRouterNode for Triage_Route (deterministic routing, no agent needed).
     Author nodes (builders/writers) get a code quality reviewer sub-agent.
     """
     from workflow_engine.agent_node import AgentNode
 
-    all_descriptions = {**_NODE_DESCRIPTIONS, **_RESPONSE_NODE_DESCRIPTIONS, **_TRIAGE_DESCRIPTIONS}
+    all_descriptions = {**_NODE_DESCRIPTIONS, **_RESPONSE_NODE_DESCRIPTIONS}
 
     registry: dict[str, Node] = {}
     for node_name, description in all_descriptions.items():
-        # Triage_Route stays deterministic — it's pure routing logic, not agent work.
-        if node_name == "Triage_Route":
-            registry[node_name] = TriageRouterNode()
-            registry[node_name].__doc__ = description
-            continue
-
         bp_name = _blueprint_name(description)
         bp_path = blueprints_dir / f"{bp_name}.md"
         sub_agents = _CODE_REVIEWER_SUB_AGENT if node_name in _AUTHOR_NODES else None

@@ -1,5 +1,21 @@
 # Blueprint Conventions
 
+## Project Name
+
+**Ogre** — the OG/RE reverse-engineering engine. The repo is
+`EtlReverseEngineering` and the Python package is `workflow_engine`, but the
+project's name is Ogre.
+
+## Terminology
+
+| Term | Meaning |
+|------|---------|
+| **OG** | The **original** ETL job being reverse-engineered |
+| **RE** | The **reverse-engineered** replica being built |
+| **Ogre** | This project — the engine that orchestrates the RE process |
+| **Proofmark** | Comparison tool that validates RE output against OG output |
+| **MockEtlFrameworkPython** | The host-side Python ETL framework (runs OG and RE jobs) |
+
 ## Two Artifact Streams
 
 Every agent produces two kinds of output:
