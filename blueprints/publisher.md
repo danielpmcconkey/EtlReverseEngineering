@@ -51,25 +51,16 @@ routing.** You MUST write this file even on FAIL.
 2. If conf references External modules, verify `.py` files exist in
    `{job_dir}/artifacts/code/`.
 3. Verify test results show all tests passed (from process artifact).
-4. **Clear prior RE output before deploying.** This is critical for append-mode
-   jobs — if a prior run's output exists, the framework will append to it and
-   produce duplicate rows. Read the job name from the job conf, then delete
-   all contents under the RE output directory:
-   ```bash
-   rm -rf /workspace/MockEtlFrameworkPython/Output/re-curated/{job_name}/
-   ```
-   This is safe — the framework will recreate the directory structure on the
-   next run. Do this EVERY time, not just on retries. Clean slate.
-5. **Deploy artifacts into MockEtlFrameworkPython:**
+4. **Deploy artifacts into MockEtlFrameworkPython:**
    a. Create directory `/workspace/MockEtlFrameworkPython/RE/Jobs/{job_name}/`
       if it doesn't exist.
    b. Copy job conf to `/workspace/MockEtlFrameworkPython/RE/Jobs/{job_name}/jobconf.json`.
    c. Copy any external modules to `/workspace/MockEtlFrameworkPython/RE/externals/`.
-6. **Look up OG job description:**
+5. **Look up OG job description:**
    ```sql
    SELECT description FROM control.jobs WHERE job_name = '{job_name}';
    ```
-7. **Register in `control.jobs`:**
+6. **Register in `control.jobs`:**
    ```sql
    INSERT INTO control.jobs (job_name, description, job_conf_path, is_active)
    VALUES (
@@ -86,8 +77,8 @@ routing.** You MUST write this file even on FAIL.
    ```
    `{ETL_ROOT}` is a literal string token — do NOT resolve it. The host
    framework expands it at runtime from its own environment.
-8. Verify registration by querying the table.
-9. Verify deployed files are readable at the target paths.
+7. Verify registration by querying the table.
+8. Verify deployed files are readable at the target paths.
 
 ## Database Connection
 
