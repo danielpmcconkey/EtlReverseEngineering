@@ -85,7 +85,12 @@ class StepHandler:
             complete_task(task_id)
             return
 
-        outcome = self._resolve_outcome(job, node_name, raw_outcome)
+        try:
+            outcome = self._resolve_outcome(job, node_name, raw_outcome)
+        except Exception:
+            import sys, traceback
+            traceback.print_exc(file=sys.stderr)
+            raise
 
         # Handle terminal: DEAD_LETTER
         if job.status == "DEAD_LETTER":
@@ -103,6 +108,13 @@ class StepHandler:
         # Standard transition lookup
         key = (node_name, outcome)
         if key not in TRANSITION_TABLE:
+            import sys
+            print(
+                f"[DIAG] No transition for ({node_name}, {outcome.name}). "
+                f"raw={raw_outcome.name} job={job_id} status={job.status} "
+                f"retry={job.main_retry_count} cond={dict(job.conditional_counts)}",
+                file=sys.stderr, flush=True,
+            )
             save_job_state(job)
             fail_task(task_id)
             raise ValueError(
@@ -120,15 +132,25 @@ class StepHandler:
             last_rejection=job.last_rejection_reason,
         )
 
-        if next_node == "COMPLETE":
-            job.status = "COMPLETE"
-            save_job_state(job)
-            complete_task(task_id)
-        else:
-            job.current_node = next_node
-            save_job_state(job)
-            complete_task(task_id)
-            enqueue_task(job_id, next_node)
+        try:
+            if next_node == "COMPLETE":
+                job.status = "COMPLETE"
+                save_job_state(job)
+                complete_task(task_id)
+            else:
+                job.current_node = next_node
+                save_job_state(job)
+                complete_task(task_id)
+                enqueue_task(job_id, next_node)
+        except Exception:
+            import sys, traceback
+            print(
+                f"[DIAG] Transition crash: ({node_name}, {outcome.name}) -> {next_node} "
+                f"job={job_id}",
+                file=sys.stderr, flush=True,
+            )
+            traceback.print_exc(file=sys.stderr)
+            raise
 
     def _resolve_outcome(
         self, job: JobState, node_name: str, raw_outcome: Outcome
